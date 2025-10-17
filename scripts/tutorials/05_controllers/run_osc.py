@@ -233,6 +233,7 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             osc.reset()
             command, task_frame_pose_b = convert_to_task_frame(osc, command=command, ee_target_pose_b=ee_target_pose_b)
             osc.set_command(command=command, current_ee_pose_b=ee_pose_b, current_task_frame_pose_b=task_frame_pose_b)
+            
         else:
             # get the updated states
             (
@@ -259,6 +260,21 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
                 current_joint_vel=joint_vel,
                 nullspace_joint_pos_target=joint_centers,
             )
+
+            # 환경 128개의 정보
+            #if count % 10 == 0:
+            #    print(f"Step {count}:")
+            #    print(f"  Contact forces: {contact_forces.data.net_forces_w}")
+            #    print(f"  Joint torques: {joint_efforts}")
+            #    print(f"  Joint torque magnitudes: {torch.norm(joint_efforts, dim=-1)}")
+            
+            if count % 10 == 0:
+                print(f"Step {count}:")
+                # 첫 번째 환경만 출력
+                print(f"  Contact force (env 0): {contact_forces.data.net_forces_w[0].squeeze()}")  # [3] 벡터로
+                print(f"  Joint torques (env 0): {joint_efforts[0]}")  # [7] 벡터로
+                print(f"  Contact force magnitude: {torch.norm(contact_forces.data.net_forces_w[0]):.4f} N")
+
             # apply actions
             robot.set_joint_effort_target(joint_efforts, joint_ids=arm_joint_ids)
             robot.write_data_to_sim()

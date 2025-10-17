@@ -20,6 +20,7 @@ from . import factory_control, factory_utils
 from .factory_env_cfg import OBS_DIM_CFG, STATE_DIM_CFG, FactoryEnvCfg
 
 
+
 class FactoryEnv(DirectRLEnv):
     cfg: FactoryEnvCfg
 

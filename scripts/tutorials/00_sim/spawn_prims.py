@@ -31,8 +31,11 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+# to create xform
 import isaacsim.core.utils.prims as prim_utils
 
+# isaaclab.sim - sim_utils : 
+# utils.assets. Nucleus server : platform for real-time collaboration and sharing for 3D assets
 import isaaclab.sim as sim_utils
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
@@ -98,6 +101,9 @@ def main():
     sim.set_camera_view([2.0, 0.0, 2.5], [-0.5, 0.0, 0.5])
     # Design scene
     design_scene()
+
+    # reset되기 전에 desing_scene()이 정의되어야함
+
     # Play the simulator
     sim.reset()
     # Now we are ready!

@@ -34,12 +34,13 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import torch
+# torch는 tensor computation ; handling position, states and other simulation data
 
 import isaacsim.core.utils.prims as prim_utils
 
 import isaaclab.sim as sim_utils
-import isaaclab.utils.math as math_utils
-from isaaclab.assets import RigidObject, RigidObjectCfg
+import isaaclab.utils.math as math_utils # sampling for position, transformation
+from isaaclab.assets import RigidObject, RigidObjectCfg #
 from isaaclab.sim import SimulationContext
 
 
@@ -61,6 +62,7 @@ def design_scene():
     # Rigid Object
     cone_cfg = RigidObjectCfg(
         prim_path="/World/Origin.*/Cone",
+    # origin 하위에 있는 모든것들 prim_path
         spawn=sim_utils.ConeCfg(
             radius=0.1,
             height=0.2,
@@ -72,6 +74,7 @@ def design_scene():
         init_state=RigidObjectCfg.InitialStateCfg(),
     )
     cone_object = RigidObject(cfg=cone_cfg)
+    #rigid object class -> cfg만 입력하면 됨
 
     # return the scene information
     scene_entities = {"cone": cone_object}

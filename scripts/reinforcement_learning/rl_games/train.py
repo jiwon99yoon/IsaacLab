@@ -1,3 +1,4 @@
+# /home/dyros/IsaacLab/scripts/reinforcement_learning/rl_games/train.py
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
@@ -46,6 +47,8 @@ parser.add_argument("--export_io_descriptors", action="store_true", default=Fals
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli, hydra_args = parser.parse_known_args()
+# hydra의 경우 parser이외 model의 param에 직접 접근 가능
+# ex. max_epochs, mini_batch_size등, 관련 변수들 yaml file에서 확인가능
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -89,7 +92,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 # PLACEHOLDER: Extension template (do not remove this comment)
 
 
-@hydra_task_config(args_cli.task, args_cli.agent)
+@hydra_task_config(args_cli.task, args_cli.agent) # hydra통해서 환경 업로드
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: dict):
     """Train with RL-Games agent."""
     # override configurations with non-hydra CLI arguments
