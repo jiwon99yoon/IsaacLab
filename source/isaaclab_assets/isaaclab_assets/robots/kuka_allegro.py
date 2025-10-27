@@ -1,3 +1,4 @@
+# /home/dyros/IsaacLab/source/isaaclab_assets/isaaclab_assets/robots/kuka_allegro.py
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #

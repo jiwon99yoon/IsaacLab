@@ -435,8 +435,8 @@ print("\n" + "="*60 + "\n")
 # plt.figure(figsize=(14, 7))
 
 # Define colors for each joint
-colors = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22']
-joint_labels = ['J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7']
+# colors = ['#E74C3C', '#3498DB', '#2ECC71', '#F39C12', '#9B59B6', '#1ABC9C', '#E67E22']
+# joint_labels = ['J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7']
 
 # for i in range(7):
 #     if i == 3:

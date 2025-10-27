@@ -27,3 +27,7 @@ from .shadow_hand import *
 from .spot import *
 from .unitree import *
 from .universal_robots import *
+
+# 추가
+from .hdr_dg5f import *
+from .hdr_dg5f_new import *

@@ -61,20 +61,23 @@ class SceneCfg(InteractiveSceneCfg):
             collision_props=sim_utils.CollisionPropertiesCfg(),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.2),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.55, 0.1, 0.35)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.8, 0.0, 0.27)),
+        #init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.55, 0.1, 0.35)),
     )
 
     # table
     table: RigidObjectCfg = RigidObjectCfg(
         prim_path="/World/envs/env_.*/table",
         spawn=sim_utils.CuboidCfg(
-            size=(0.8, 1.5, 0.04),
+            size=(0.8, 1.0, 0.04),
+            #size=(0.8, 1.5, 0.04),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             # trick: we let visualizer's color to show the table with success coloring
             visible=False,
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.55, 0.0, 0.235), rot=(1.0, 0.0, 0.0, 0.0)),
+        #init_state=RigidObjectCfg.InitialStateCfg(pos=(-0.55, 0.0, 0.235), rot=(1.0, 0.0, 0.0, 0.0)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.8, 0.0, 0.235), rot=(1.0, 0.0, 0.0, 0.0)),
     )
 
     # plane
@@ -105,12 +108,20 @@ class CommandsCfg:
         resampling_time_range=(3.0, 5.0),
         debug_vis=False,
         ranges=mdp.ObjectUniformPoseCommandCfg.Ranges(
-            pos_x=(-0.7, -0.3),
-            pos_y=(-0.25, 0.25),
-            pos_z=(0.55, 0.95),
+            # 🔥 수정: 테이블 주변 (로봇 앞쪽) 범위
+            # 🔥 수정: 새로운 테이블 위치(x=0.8) 주변
+            pos_x=(0.7, 0.9),     # 테이블 x=0.8 주변
+            pos_y=(-0.3, 0.3),     # 테이블 y=0.0 주변
+            pos_z=(0.3, 0.6),     # 테이블 위 공간 (유지)
             roll=(-3.14, 3.14),
             pitch=(-3.14, 3.14),
             yaw=(0.0, 0.0),
+            # pos_x=(-0.7, -0.3),
+            # pos_y=(-0.25, 0.25),
+            # pos_z=(0.55, 0.95),
+            # roll=(-3.14, 3.14),
+            # pitch=(-3.14, 3.14),
+            # yaw=(0.0, 0.0),
         ),
         success_vis_asset_name="table",
     )
@@ -196,8 +207,10 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": [0.5, 1.0],
-            "dynamic_friction_range": [0.5, 1.0],
+#            "static_friction_range": [0.5, 1.0],
+#            "dynamic_friction_range": [0.5, 1.0],
+            "static_friction_range": [0.9, 1.1],
+            "dynamic_friction_range": [0.9, 1.1],
             "restitution_range": [0.0, 0.0],
             "num_buckets": 250,
         },
@@ -220,8 +233,8 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-            "stiffness_distribution_params": [0.5, 2.0],
-            "damping_distribution_params": [0.5, 2.0],
+            "stiffness_distribution_params": [0.9, 1.1],
+            "damping_distribution_params": [0.9, 1.1],
             "operation": "scale",
         },
     )
@@ -235,6 +248,17 @@ class EventCfg:
             "operation": "scale",
         },
     )
+
+    # joint_stiffness_and_damping = EventTerm(
+    #     func=mdp.randomize_actuator_gains,
+    #     mode="startup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+    #         "stiffness_distribution_params": [0.5, 2.0],
+    #         "damping_distribution_params": [0.5, 2.0],
+    #         "operation": "scale",
+    #     },
+    # )
 
     object_scale_mass = EventTerm(
         func=mdp.randomize_rigid_body_mass,
@@ -261,13 +285,22 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {
-                "x": [-0.2, 0.2],
-                "y": [-0.2, 0.2],
-                "z": [0.0, 0.4],
+                # 🔥 수정: 초기 물체 위치(0.6, 0.0, 0.27) 기준 상대 오프셋
+                "x": [-0.1, 0.1],     # x=0.5 ~ 0.7 사이
+                "y": [-0.2, 0.2],     # y=-0.3 ~ 0.3 사이
+                "z": [0.0, 0.2],     # z=0.27 ~ 0.37 사이 (테이블 위)
                 "roll": [-3.14, 3.14],
                 "pitch": [-3.14, 3.14],
                 "yaw": [-3.14, 3.14],
             },
+            # "pose_range": {
+            #     "x": [-0.2, 0.2],
+            #     "y": [-0.2, 0.2],
+            #     "z": [0.0, 0.4],
+            #     "roll": [-3.14, 3.14],
+            #     "pitch": [-3.14, 3.14],
+            #     "yaw": [-3.14, 3.14],
+            # },
             "velocity_range": {"x": [-0.0, 0.0], "y": [-0.0, 0.0], "z": [-0.0, 0.0]},
             "asset_cfg": SceneEntityCfg("object"),
         },
@@ -296,8 +329,8 @@ class EventCfg:
         func=mdp.reset_joints_by_offset,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("robot", joint_names="iiwa7_joint_7"),
-            "position_range": [-3, 3],
+            "asset_cfg": SceneEntityCfg("robot", joint_names="j4"),
+            "position_range": [-0.1, 0.1], #[[-3, 3],
             "velocity_range": [0.0, 0.0],
         },
     )
@@ -366,7 +399,7 @@ class RewardsCfg:
         },
     )
 
-    early_termination = RewTerm(func=mdp.is_terminated_term, weight=-1, params={"term_keys": "abnormal_robot"})
+    early_termination = RewTerm(func=mdp.is_terminated_term, weight=-1, params={"term_keys": "abnormal_robot"}) #"object_out_of_bound"}) #"abnormal_robot"}) #"object_out_of_bound"}) #"abnormal_robot"
 
 
 @configclass
@@ -378,8 +411,11 @@ class TerminationsCfg:
     object_out_of_bound = DoneTerm(
         func=mdp.out_of_bound,
         params={
-            "in_bound_range": {"x": (-1.5, 0.5), "y": (-2.0, 2.0), "z": (0.0, 2.0)},
+            # 🔥 수정: 로봇 앞쪽 작업 공간을 포함하도록 범위 변경
+            "in_bound_range": {"x": (-0.5, 2.0), "y": (-2.0, 2.0), "z": (0.0, 2.0)},
             "asset_cfg": SceneEntityCfg("object"),
+            # "in_bound_range": {"x": (-1.5, 0.5), "y": (-2.0, 2.0), "z": (0.0, 2.0)},
+            # "asset_cfg": SceneEntityCfg("object"),
         },
     )
 
@@ -391,7 +427,7 @@ class DexsuiteReorientEnvCfg(ManagerBasedEnvCfg):
     """Dexsuite reorientation task definition, also the base definition for derivative Lift task and evaluation task"""
 
     # Scene settings
-    viewer: ViewerCfg = ViewerCfg(eye=(-2.25, 0.0, 0.75), lookat=(0.0, 0.0, 0.45), origin_type="env")
+    viewer: ViewerCfg = ViewerCfg(eye=(2.25, 0.0, 0.75), lookat=(0.0, 0.0, 0.45), origin_type="env")
     scene: SceneCfg = SceneCfg(num_envs=4096, env_spacing=3, replicate_physics=False)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()

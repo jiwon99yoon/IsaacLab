@@ -46,4 +46,4 @@ def abnormal_robot_state(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = Sce
     """Terminating environment when violation of velocity limits detects, this usually indicates unstable physics caused
     by very bad, or aggressive action"""
     robot: Articulation = env.scene[asset_cfg.name]
-    return (robot.data.joint_vel.abs() > (robot.data.joint_vel_limits * 2)).any(dim=1)
+    return (robot.data.joint_vel.abs() > (robot.data.joint_vel_limits * 1000)).any(dim=1) #원래 *2

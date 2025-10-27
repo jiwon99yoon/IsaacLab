@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots import KUKA_ALLEGRO_CFG
+from isaaclab_assets.robots import HDR_DG5F_CFG_NEW
 
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -16,14 +16,12 @@ from ... import mdp
 
 
 @configclass
-class KukaAllegroRelJointPosActionCfg:
+class HdrDg5fNewRelJointPosActionCfg:
     action = mdp.RelativeJointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.1)
 
-
 @configclass
-class KukaAllegroReorientRewardCfg(dexsuite.RewardsCfg):
-
-    # bool awarding term if 2 finger tips are in contact with object, one of the contacting fingers has to be thumb.
+class HdrDg5fNewReorientRewardCfg(dexsuite.RewardsCfg):
+    """Reorient 태스크용 리워드 (손가락 접촉 추가)"""
     good_finger_contact = RewTerm(
         func=mdp.contacts,
         weight=0.5,
@@ -31,22 +29,23 @@ class KukaAllegroReorientRewardCfg(dexsuite.RewardsCfg):
     )
 
 
+
 @configclass
-class KukaAllegroMixinCfg:
-    rewards: KukaAllegroReorientRewardCfg = KukaAllegroReorientRewardCfg()
-    actions: KukaAllegroRelJointPosActionCfg = KukaAllegroRelJointPosActionCfg()
+class HdrDg5fNewMixinCfg:
+    rewards: HdrDg5fNewReorientRewardCfg = HdrDg5fNewReorientRewardCfg()
+    actions: HdrDg5fNewRelJointPosActionCfg = HdrDg5fNewRelJointPosActionCfg()
 
     def __post_init__(self: dexsuite.DexsuiteReorientEnvCfg):
         super().__post_init__()
-        self.commands.object_pose.body_name = "palm_link"
-        self.scene.robot = KUKA_ALLEGRO_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-        finger_tip_body_list = ["index_link_3", "middle_link_3", "ring_link_3", "thumb_link_3"]
+        self.commands.object_pose.body_name = "rl_dg_palm" #"rl_dg_mount"
+        self.scene.robot = HDR_DG5F_CFG_NEW.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        finger_tip_body_list = ["rl_dg_1_4", "rl_dg_2_4", "rl_dg_3_4", "rl_dg_4_4", "rl_dg_5_4"]
         for link_name in finger_tip_body_list:
             setattr(
                 self.scene,
                 f"{link_name}_object_s",
                 ContactSensorCfg(
-                    prim_path="{ENV_REGEX_NS}/Robot/ee_link/" + link_name,
+                    prim_path="{ENV_REGEX_NS}/Robot/dg5f_right_new/" + link_name,
                     filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
                 ),
             )
@@ -55,25 +54,14 @@ class KukaAllegroMixinCfg:
             params={"contact_sensor_names": [f"{link}_object_s" for link in finger_tip_body_list]},
             clip=(-20.0, 20.0),  # contact force in finger tips is under 20N normally
         )
-        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["palm_link", ".*_tip"]
-        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["palm_link", ".*_tip"])
+        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["rl_dg_palm", ".*_tip"]
+        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["rl_dg_palm", ".*_tip"])
 
 
 @configclass
-class DexsuiteKukaAllegroReorientEnvCfg(KukaAllegroMixinCfg, dexsuite.DexsuiteReorientEnvCfg):
+class DexsuiteHdrDg5fNewLiftEnvCfg(HdrDg5fNewMixinCfg, dexsuite.DexsuiteLiftEnvCfg):
     pass
 
-
 @configclass
-class DexsuiteKukaAllegroReorientEnvCfg_PLAY(KukaAllegroMixinCfg, dexsuite.DexsuiteReorientEnvCfg_PLAY):
-    pass
-
-
-@configclass
-class DexsuiteKukaAllegroLiftEnvCfg(KukaAllegroMixinCfg, dexsuite.DexsuiteLiftEnvCfg):
-    pass
-
-
-@configclass
-class DexsuiteKukaAllegroLiftEnvCfg_PLAY(KukaAllegroMixinCfg, dexsuite.DexsuiteLiftEnvCfg_PLAY):
+class DexsuiteHdrDg5fNewLiftEnvCfg_PLAY(HdrDg5fNewMixinCfg, dexsuite.DexsuiteLiftEnvCfg_PLAY):
     pass
