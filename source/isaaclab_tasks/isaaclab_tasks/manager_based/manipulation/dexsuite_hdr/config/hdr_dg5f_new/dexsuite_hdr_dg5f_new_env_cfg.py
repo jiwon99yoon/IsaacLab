@@ -22,9 +22,12 @@ class HdrDg5fNewRelJointPosActionCfg:
 @configclass
 class HdrDg5fNewReorientRewardCfg(dexsuite.RewardsCfg):
     """Reorient 태스크용 리워드 (손가락 접촉 추가)"""
+    # MODIFIED: Increased weight to encourage finger contact learning
+    # ORIGINAL (Kuka-Allegro): weight=0.5
+    # MODIFIED (HDR-DG5F): weight=3.0 (6x increase to prioritize grasping)
     good_finger_contact = RewTerm(
         func=mdp.contacts,
-        weight=0.5,
+        weight=2.0,  # cluade 3.0 추천 -> 2.0으로줄임 # Increased from 0.5 to prioritize multi-finger contact
         params={"threshold": 1.0},
     )
 
@@ -54,8 +57,8 @@ class HdrDg5fNewMixinCfg:
             params={"contact_sensor_names": [f"{link}_object_s" for link in finger_tip_body_list]},
             clip=(-20.0, 20.0),  # contact force in finger tips is under 20N normally
         )
-        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["rl_dg_palm", ".*_tip"]
-        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["rl_dg_palm", ".*_tip"])
+        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["rl_dg_palm", "rl_dg_.*_4"] #".*_tip"]
+        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["rl_dg_palm", "rl_dg_.*_4"]) #".*_tip"])
 
 
 @configclass

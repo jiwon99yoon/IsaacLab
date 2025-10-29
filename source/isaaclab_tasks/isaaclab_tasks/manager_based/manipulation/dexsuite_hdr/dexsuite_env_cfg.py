@@ -399,7 +399,44 @@ class RewardsCfg:
         },
     )
 
-    early_termination = RewTerm(func=mdp.is_terminated_term, weight=-1, params={"term_keys": "abnormal_robot"}) #"object_out_of_bound"}) #"abnormal_robot"}) #"object_out_of_bound"}) #"abnormal_robot"
+    early_termination = RewTerm(func=mdp.is_terminated_term, weight=-1, params={"term_keys": "abnormal_robot"})
+
+    # ========== NEW REWARDS FOR HDR-DG5F (Not in Kuka-Allegro) ==========
+    # These rewards encourage grasping behavior and prevent ground-bouncing exploitation
+
+    # DISABLED: object_lift - Agent found shortcut (pushing with arm instead of grasping)
+    # This caused good_finger_contact to remain at 0 as agent optimized for easy lift reward
+    # ORIGINAL (REMOVED):
+    # object_lift = RewTerm(
+    #     func=mdp.object_lift_height,
+    #     weight=5.0,  # High weight to prioritize grasping
+    #     params={
+    #         "threshold": 0.05,  # 5cm lift height for full reward
+    #         "object_cfg": SceneEntityCfg("object"),
+    #     },
+    # )
+
+    # Penalty for object touching ground/table (prevents bouncing strategy)
+    # Weight scaled to match Kuka reward magnitudes (0.5, 2.0, 4.0, 10.0 scale)
+    # ORIGINAL: weight=-3.0 (too high, prevented any contact)
+    # 1st REDUCTION: weight=-1.5 (still too strong, agent avoids object entirely)
+    # FINAL: Further reduced to not discourage initial contact attempts
+    ground_contact_penalty = RewTerm(
+        func=mdp.object_ground_contact_penalty,
+        weight=-0.05,  # Weak penalty - prevents extreme bouncing but allows contact
+        params={"object_cfg": SceneEntityCfg("object")},
+    )
+
+    # Reward for sustained grasping over time (prevents momentary tapping)
+    # Weight matches Kuka scale (similar to position_tracking=2.0)
+    grasp_duration = RewTerm(
+        func=mdp.grasp_duration,
+        weight=1.0,  # MODIFIED from 2.0 to be slightly lower than position_tracking
+        params={
+            "threshold": 1.0,  # Contact force threshold
+            "min_duration": 10,  # Must maintain grasp for 10 steps
+        },
+    )
 
 
 @configclass
