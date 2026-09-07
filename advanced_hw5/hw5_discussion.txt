@@ -1,0 +1,890 @@
+==============================================================================
+Dynamics and Control of Robot-Environment Interaction HW_5 Discussion
+Student ID: 27134, Name: Yoon Jiwon
+==============================================================================
+
+2. Discussion
+
+This assignment implements Task Space Control for a 7-DOF manipulator, which is
+fundamentally different from the Joint Space Control paradigm used in HW2-HW4.
+
+Task Space refers to the position and orientation of the robot's End-Effector (EE),
+and controlling directly in this space enables more intuitive and effective control
+for task execution.
+
+Initial positions:
+- Problem 1: qi1 = [0, 0, 0, -pi/2, 0, pi/2, pi/4]
+- Problem 2: qi2 = [0, -pi/3, 0, -pi/2, 0, pi/6, pi/4]
+
+Main control objectives:
+- Problem 1-1: Move EE 2cm in y0 direction (step response)
+- Problem 1-2: Move EE 10cm in y0 direction (cubic spline trajectory)
+- Problem 2: Safe task space control with velocity limit (0.3 m/s)
+
+New Implementation Structure (2-Phase Approach):
+- Preparation Phase: Joint space PD control to reach qi (Keys 3, 6)
+- Execution Phase: Task space control for the actual task (Keys 4, 5, 7)
+
+
+==============================================================================
+Task Space Control vs Joint Space Control: Fundamental Differences
+==============================================================================
+
+[Control Space Differences]
+
+**Joint Space Control (HW2-HW4)**:
+- Control variables: q in R^7 (joint angles)
+- Target: qd (desired joint angles)
+- Dynamics: M(q)q_ddot + C(q,q_dot)q_dot + G(q) = tau
+- Advantages: Direct control, no singularities
+- Disadvantages: Difficult to design motion in task space
+
+**Task Space Control (HW5)**:
+- Control variables: x in SE(3) (EE pose: position + orientation)
+- Target: xd (desired EE pose)
+- Dynamics: Lambda(q)x_ddot + mu(q,q_dot) + p(q) = F
+- Advantages: Intuitive control in task space, direct path design
+- Disadvantages: Singularity issues, complex dynamics computation
+
+[Operational Space Dynamics]
+
+The equation of motion in Task Space has a different form than Joint Space:
+
+Lambda(q)x_ddot + mu(q,q_dot) + p(q) = F
+
+where:
+- Lambda(q): Task space inertia matrix = (J M^-1 J^T)^-1
+- mu(q,q_dot): Task space Coriolis/centrifugal forces
+- p(q): Task space gravity forces
+- F: Task space force (control input)
+
+Relationship with Joint Space torque:
+tau = J^T F
+
+However, this is not unique for redundant robots!
+
+
+---------------------------------------------------------------------------
+NEW IMPLEMENTATION: 2-Phase Control Structure
+---------------------------------------------------------------------------
+
+Unlike the original assignment specification which used a single function with
+two phases, this implementation separates preparation and execution into
+distinct control modes for better modularity and clarity.
+
+**Preparation Phase (Keys 3, 6)**:
+- Purpose: Move robot to initial configuration qi using Joint Space control
+- Controller: PD + M + G (same as HW4_4)
+- Duration: User-controlled (press next key when ready)
+- Logging: DISABLED (no data recording during preparation)
+- Key mapping:
+  * Key 3: hw5_prepare_problem1 -> qi1 = [0, 0, 0, -90deg, 0, 90deg, 45deg]
+  * Key 6: hw5_prepare_problem2 -> qi2 = [0, -60deg, 0, -90deg, 0, 30deg, 45deg]
+
+**Execution Phase (Keys 4, 5, 7)**:
+- Purpose: Perform actual task using Task Space control
+- Controller: Task Space PD + Lambda + G + Nullspace
+- Logging: ENABLED (records EE position: time, x, y, z)
+- Key mapping:
+  * Key 4: hw5_1_step -> 2cm y0 step
+  * Key 5: hw5_1_cubic -> 10cm y0 cubic spline
+  * Key 7: hw5_2_velocity_sat -> Move to xd with velocity saturation
+
+**Workflow Examples**:
+1. HW5-1-1: Press [2] -> [3] -> [4]
+2. HW5-1-2: Press [2] -> [3] -> [5]
+3. HW5-2:   Press [2] -> [6] -> [7]
+
+**Advantages of This Approach**:
+1. Clear separation of concerns (preparation vs execution)
+2. User control over timing (can wait for settling before starting task)
+3. Clean logging (only task execution data, no preparation transients)
+4. Reusable preparation phases (can execute multiple tasks from same qi)
+5. Easier debugging (can test preparation and execution independently)
+
+
+---------------------------------------------------------------------------
+Problem 1-1: Task Space PD with Dynamic Compensation (2cm Step)
+---------------------------------------------------------------------------
+
+**Control Objective**: Starting from qi1 = [0, 0, 0, -pi/2, 0, pi/2, pi/4],
+                      move EE 2cm in y0 direction using step command
+
+**Execution Flow**:
+1. Press Key 2 (joint_ctrl_home): Go to torque mode initial position
+2. Press Key 3 (hw5_prepare_problem1): Move to qi1 using Joint Space PD+M+G
+   - Wait ~1-2 seconds for convergence
+   - No logging during this phase
+3. Press Key 4 (hw5_1_step): Execute 2cm step in Task Space
+   - Logging starts immediately
+   - Records: time, x_pos, y_pos, z_pos
+
+**Control Law** (Key 4):
+tau = J^T Lambda F*_0 + [I - J^T J_bar^T]tau_0 + G
+
+where:
+- F*_0 = kp(xd - x) + kv(xd_dot - x_dot) (6D task space force)
+- Lambda = (J M^-1 J^T)^-1 (task space inertia)
+- J_bar = M^-1 J^T Lambda (dynamically consistent generalized inverse)
+- N = I - J^T J_bar^T (nullspace projector)
+- tau_0: nullspace control input to maintain qi1
+
+**Position Error**:
+Delta_x = xd - xc (3D, Cartesian position error)
+
+**Orientation Error** (axis-angle representation):
+delta_Phi = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+where nd, sd, ad are column vectors of desired orientation,
+nc, sc, ac are column vectors of current orientation
+
+[Theoretical Analysis]
+
+1) **Task Space Inertia Matrix (Lambda)**:
+
+Joint Space: M(q)q_ddot = tau
+Task Space: x_ddot = J q_ddot + J_dot q_dot
+
+Combining these:
+x_ddot = J M^-1 tau + J_dot q_dot
+
+Using task space force F = (J^T)^+ tau:
+M(q)q_ddot = J_bar^T F (dynamically consistent)
+
+where J_bar = M^-1 J^T Lambda and Lambda = (J M^-1 J^T)^-1.
+
+This is the inertia matrix in Task Space, corresponding to M(q) in Joint Space.
+
+**Physical meaning of Lambda**:
+- Inverse of acceleration when unit force F is applied to EE
+- Configuration-dependent: changes with robot posture
+- Arm extended: Lambda increases (inertia increases)
+- Arm folded: Lambda decreases (inertia decreases)
+
+2) **Dynamically Consistent Generalized Inverse (J_bar)**:
+
+For 7-DOF robot with 6-DOF task -> redundancy exists
+Therefore, inverse of J is not unique.
+
+General pseudo-inverse: J^+ = J^T(J J^T)^-1
+-> Guarantees only kinematic consistency
+
+Dynamically consistent inverse: J_bar = M^-1 J^T Lambda
+-> Guarantees dynamic consistency
+
+**Difference**:
+tau = J^T F (general)
+tau = J_bar^T F (dynamically consistent)
+
+Using J_bar:
+- Nullspace control does not affect task
+- Energy-efficient torque distribution
+- Dynamic decoupling of task and nullspace
+
+3) **Nullspace Projector (N)**:
+
+N = I - J^T J_bar^T = I - J^T Lambda J M^-1
+
+**Properties**:
+- N J^T = 0 (projects to nullspace)
+- N^2 = N (idempotent)
+- rank(N) = 7 - 6 = 1 (for 7-DOF with 6-DOF task)
+
+**Meaning**:
+tau = J^T Lambda F*_0 + N tau_0 + G
+      └─── task ───┘   └─nullspace─┘
+
+- Task control: J^T Lambda F*_0 -> Controls EE
+- Nullspace control: N tau_0 -> Optimizes joints without affecting task
+  (e.g., singularity avoidance, joint limit avoidance)
+
+4) **Why Dynamic Compensation in Task Space?**
+
+HW4 compensated M in Joint Space:
+tau = M{kp(qd - q) + kv(qd_dot - q_dot)} + G
+-> q_ddot ≈ kp(qd - q) + kv(qd_dot - q_dot)
+
+HW5 compensates Lambda in Task Space:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+tau = J^T Lambda F* + N tau_0 + G
+
+Substituting into dynamics:
+M q_ddot + C q_dot + G = J^T Lambda F* + N tau_0 + G
+
+Transform to task space (left multiply by J M^-1):
+J M^-1[M q_ddot + C q_dot] = J M^-1 J^T Lambda F* + 0
+x_ddot + J M^-1 C q_dot ≈ Lambda^-1 Lambda F* = F*
+
+For low-speed motion (C ≈ 0):
+-> x_ddot ≈ kp(xd - x) + kv(xd_dot - x_dot)
+
+Thus, decoupled 2nd order system in Task Space!
+
+5) **Orientation Error Calculation (axis-angle representation)**:
+
+Ways to represent orientation error:
+① Quaternion error
+② Rotation matrix error
+③ Axis-angle representation <- Used in this assignment
+
+Current rotation: Rc = [nc | sc | ac]
+Desired rotation: Rd = [nd | sd | ad]
+
+Error rotation: Re = Rd Rc^T
+
+Axis-angle representation:
+delta_Phi = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+**Why this formula?**:
+First-order approximation of rotation error:
+Re ≈ I + [delta_Phi]×
+
+where [delta_Phi]× is skew-symmetric matrix:
+      [  0        -delta_Phi_z   delta_Phi_y  ]
+[δΦ]× = [  delta_Phi_z    0       -delta_Phi_x ]
+      [ -delta_Phi_y  delta_Phi_x     0        ]
+
+Solving Re = Rd Rc^T ≈ I + [delta_Phi]×:
+delta_Phi = 0.5 * vex(Rd Rc^T - Rc Rd^T)
+          = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+This represents the axis-angle error of rotation.
+
+**Why not Quaternion?**:
+- Quaternion is 4D representation (over-parameterized)
+- Axis-angle is 3D, directly controllable
+- Clear relationship with Jacobian
+- Used in lecture notes (REinteraction-7, p.19-21)
+
+6) **Step Response Characteristics**:
+
+kp = 400, kv = 40 (wn = 20 rad/sec, zeta = 1)
+
+2cm step in y0:
+- xd = x_init + [0, 0.02, 0]^T (y0 direction)
+- xd_dot = 0 (stationary target)
+
+Initial error: Delta_x = [0, 0.02, 0]^T
+-> F*_0 = 400 * [0, 0.02, 0]^T + 0 = [0, 8, 0]^T N
+
+Critically damped response:
+- Settling time: ts ≈ 4.6/wn = 0.23 sec
+- Overshoot: 0%
+- No oscillation
+
+[Educational Intent]
+Understanding the basic structure of Task Space Control and clearly
+distinguishing it from Joint Space. Specifically:
+1. Role of Lambda matrix (Task space inertia compensation)
+2. Necessity of J_bar (Dynamic consistency)
+3. Concept of nullspace control
+4. Orientation error calculation
+
+
+---------------------------------------------------------------------------
+Problem 1-2: Task Space PD with Dynamic Compensation (10cm Cubic)
+---------------------------------------------------------------------------
+
+**Control Objective**: Starting from qi1, move EE 10cm in y0 direction
+                      using cubic spline trajectory
+
+**Execution Flow**:
+1. Press Key 2: Go to torque mode initial position
+2. Press Key 3: Move to qi1 (wait for convergence)
+3. Press Key 5 (hw5_1_cubic): Execute 10cm cubic spline
+   - Logging starts immediately
+   - Duration: 3 seconds
+
+**Difference from Problem 1-1**: Uses cubic spline trajectory instead of step
+
+**Cubic Spline Trajectory**:
+xd(t) = a0 + a1*t + a2*t^2 + a3*t^3
+
+Boundary conditions:
+- xd(t0) = x_init
+- xd(tf) = x_final
+- xd_dot(t0) = 0
+- xd_dot(tf) = 0
+
+Solve for 4 coefficients a0, a1, a2, a3:
+
+a0 = x_init
+a1 = 0
+a2 = 3(x_final - x_init) / T^2
+a3 = -2(x_final - x_init) / T^3
+
+where T = tf - t0 (duration)
+
+Velocity profile:
+xd_dot(t) = a1 + 2*a2*t + 3*a3*t^2
+          = 6(x_final - x_init)/T^2 * t - 6(x_final - x_init)/T^3 * t^2
+
+Acceleration profile:
+xd_ddot(t) = 2*a2 + 6*a3*t
+           = 6(x_final - x_init)/T^2 - 12(x_final - x_init)/T^3 * t
+
+[Theoretical Analysis]
+
+1) **Step vs Cubic Differences**:
+
+**Step Command**:
+- xd: Discontinuous (instantaneous jump)
+- xd_dot = 0: No velocity command
+- xd_ddot = ∞ (theoretically): Requires infinite acceleration
+-> Large initial error -> Large control force -> Possible overshoot
+
+**Cubic Spline**:
+- xd: Continuous, C^2 smooth
+- xd_dot: Smooth velocity profile (starts/ends at 0)
+- xd_ddot: Continuous acceleration
+-> Small tracking error -> Smooth response -> Minimal overshoot
+
+2) **Feedforward vs Feedback**:
+
+Pure feedback control:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+Ideally, add feedforward:
+F* = Lambda xd_ddot + mu + kp(xd - x) + kv(xd_dot - x_dot)
+
+However, this assignment uses feedback only.
+Cubic spline is smooth enough for good performance with feedback alone.
+
+3) **Tracking Performance**:
+
+Desired dynamics:
+x_ddot = kp(xd - x) + kv(xd_dot - x_dot)
+
+Tracking error: e = xd - x, e_dot = xd_dot - x_dot
+
+Error dynamics:
+e_ddot = xd_ddot - x_ddot
+       = xd_ddot - [kp(xd - x) + kv(xd_dot - x_dot)]
+       = xd_ddot - kp*e - kv*e_dot
+
+Rearranging:
+e_ddot + kv*e_dot + kp*e = xd_ddot
+
+This is a 2nd order system with forcing input xd_ddot!
+
+**Steady-state tracking**:
+After cubic spline ends (t > tf):
+xd_ddot = 0, xd_dot = 0, xd = x_final
+
+-> e_ddot + kv*e_dot + kp*e = 0
+-> e -> 0 (critically damped, zeta = 1)
+
+Therefore, eventually reaches x_final exactly.
+
+[Educational Intent]
+Understanding the difference between step and cubic trajectories:
+1. Importance of smooth trajectories
+2. Difference between trajectory tracking and point-to-point control
+3. Path planning in Task Space
+
+
+---------------------------------------------------------------------------
+Problem 2: Velocity Saturation Controller
+---------------------------------------------------------------------------
+
+**Control Objective**: Starting from qi2 = [0, -pi/3, 0, -pi/2, 0, pi/6, pi/4],
+                      move EE to target position while respecting velocity limit
+
+**Execution Flow**:
+1. Press Key 2: Go to torque mode initial position
+2. Press Key 6 (hw5_prepare_problem2): Move to qi2 (wait for convergence)
+3. Press Key 7 (hw5_2_velocity_sat): Execute velocity saturation control
+   - Target: xd = [0.3, -0.012, 0.52]^T [m]
+   - Velocity limit: xd_dot_max = 0.3 m/s
+   - Logging starts immediately
+
+**Safety Constraint**:
+||x_dot|| ≤ xd_dot_max = 0.3 m/s (position only, orientation excluded)
+
+**Control Law**:
+F* = kv(xd_dot - x_dot)
+
+where xd_dot is calculated as:
+
+1) Desired velocity (unconstrained):
+   xd_dot_unconstrained = (kp/kv) * (xd - x)
+
+2) Velocity saturation:
+   if ||xd_dot_unconstrained|| > xd_dot_max:
+       xd_dot = (xd_dot_max / ||xd_dot_unconstrained||) * xd_dot_unconstrained
+   else:
+       xd_dot = xd_dot_unconstrained
+
+3) Control force:
+   F* = kv * (xd_dot - x_dot)
+
+[Theoretical Analysis]
+
+1) **Why Velocity Saturation?**:
+
+Trade-off between safety and performance:
+- Fast response: Large kp -> Large desired velocity -> Dangerous
+- Safety: Velocity limit -> Slow response
+
+Velocity saturation guarantees:
+① Safety: ||x_dot|| ≤ xd_dot_max (always satisfied)
+② Performance: Reach target as fast as possible
+
+2) **Mathematical Analysis**:
+
+General PD control:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+Velocity saturation control:
+F* = kv(xd_dot - x_dot)
+
+where xd_dot is the saturated desired velocity.
+
+**Case 1**: ||xd_dot_unconstrained|| ≤ xd_dot_max (small error)
+xd_dot = (kp/kv)(xd - x)
+F* = kv[(kp/kv)(xd - x) - x_dot]
+   = kp(xd - x) - kv*x_dot
+
+Similar to conventional PD (when xd_dot = 0).
+
+**Case 2**: ||xd_dot_unconstrained|| > xd_dot_max (large error)
+xd_dot = xd_dot_max * direction
+F* = kv(xd_dot_max * direction - x_dot)
+
+In this case, not proportional to position error,
+controls to limit velocity to xd_dot_max.
+
+3) **Saturation Effect**:
+
+Unconstrained desired velocity:
+xd_dot_unc = (kp/kv)(xd - x) = (400/40)(xd - x) = 10(xd - x)
+
+Example: 5cm error
+-> xd_dot_unc = 10 * 0.05 = 0.5 m/s
+
+But xd_dot_max = 0.3 m/s, so:
+-> xd_dot = 0.3 m/s (saturated)
+
+**Velocity profile**:
+Large error: xd_dot = 0.3 m/s (constant velocity phase)
+Small error: xd_dot = 10 * error (deceleration phase)
+
+Threshold:
+||xd - x|| = xd_dot_max / (kp/kv) = 0.3 / 10 = 0.03 m = 3cm
+
+Therefore:
+- Error > 3cm: Move at constant 0.3 m/s
+- Error < 3cm: Decelerate while approaching target
+
+4) **Stability Analysis**:
+
+Lyapunov function candidate:
+V = 0.5 * kp * ||xd - x||^2
+
+Time derivative:
+V_dot = kp(xd - x)^T(xd_dot - x_dot)
+
+Control law: F* = kv(xd_dot - x_dot)
+Dynamics: Lambda x_ddot ≈ F*
+
+-> x_ddot ≈ (kv/Lambda)(xd_dot - x_dot)
+
+Behaves like 1st order system:
+x_dot -> xd_dot (exponentially)
+
+Therefore:
+- Large error: x_dot -> xd_dot_max -> Approach target
+- Small error: xd_dot -> 0 -> Stop
+
+Finally x -> xd (asymptotically stable)
+
+5) **Why Use Only kv?**:
+
+General PD: F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+Velocity saturation:
+- With kp term, velocity limit guarantee is difficult
+- Using only kv enables direct control of x_dot
+- Saturating xd_dot automatically limits x_dot
+
+**Proof**:
+F* = kv(xd_dot - x_dot)
+
+If ||x_dot|| > xd_dot_max:
+- ||xd_dot|| ≤ xd_dot_max (by saturation)
+- xd_dot - x_dot is in direction to reduce x_dot
+- F* is in deceleration direction
+-> ||x_dot|| decreases
+
+Therefore ||x_dot|| ≤ xd_dot_max is always satisfied.
+
+6) **Practical Significance**:
+
+Core of robot safety control:
+- Collision avoidance: Velocity limit reduces impact force
+- Operator safety: Essential for collaborative robots
+- Standard compliance: ISO 10218 and other robot safety standards
+
+Other applications:
+- Joint velocity limit
+- Acceleration limit
+- Force/torque limit
+
+[Educational Intent]
+Task Space Control considering practical safety constraints:
+1. Necessity and implementation of velocity saturation
+2. Trade-off between safety and performance
+3. Basic concept of constrained optimization
+
+
+---------------------------------------------------------------------------
+Comparison with Previous Assignments
+---------------------------------------------------------------------------
+
+[Evolution of Control Paradigms]
+
+**HW2: Kinematics (Jacobian, CLIK)**
+- Topic: Inverse Kinematics
+- Method: Jacobian pseudo-inverse, CLIK
+- Limitation: Velocity control only, ignores dynamics
+- Core: x_dot = J*q_dot -> q_dot = J^+*xd_dot
+
+**HW3: Kinematics + Nullspace**
+- Topic: Redundancy resolution
+- Method: CLIK + nullspace control
+- Improvement: Can perform secondary tasks
+- Core: q_dot = J^+*xd_dot + (I - J^+*J)*q0_dot
+
+**HW4: Joint Space Dynamics**
+- Topic: Joint space torque control
+- Method: PD + M + G compensation
+- Improvement: Accurate dynamic control
+- Core: tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+- Result: q_ddot ≈ kp(qd-q) + kv(qd_dot-q_dot)
+
+**HW5: Task Space Dynamics** <- This assignment
+- Topic: Task space force control
+- Method: PD + Lambda + G compensation + nullspace
+- Improvement: Direct control in task space
+- Core: tau = J^T*Lambda*F* + N*tau_0 + G
+- Result: x_ddot ≈ kp(xd-x) + kv(xd_dot-x_dot)
+
+[Key Concept Comparison Table]
+
++----------+--------------+--------------+--------------+--------------+
+|  Item    |     HW2      |     HW3      |     HW4      |     HW5      |
++----------+--------------+--------------+--------------+--------------+
+| Control  |  Velocity    |  Velocity    |   Torque     |   Torque     |
+| Input    |   (q_dot)    |   (q_dot)    |    (tau)     |    (tau)     |
++----------+--------------+--------------+--------------+--------------+
+| Control  | Joint Space  | Joint Space  | Joint Space  | Task Space   |
+| Space    | (q, q_dot)   | (q, q_dot)   | (q, q_dot)   | (x, x_dot)   |
++----------+--------------+--------------+--------------+--------------+
+| Dynamics |   Ignored    |   Ignored    | M, G comp.   | Lambda, G    |
+| Comp.    |              |              |              | compensation |
++----------+--------------+--------------+--------------+--------------+
+| Null-    |      X       |      O       |      X       |      O       |
+| space    |              | (kinematic)  |              |  (dynamic)   |
++----------+--------------+--------------+--------------+--------------+
+|   Key    | J^+ = J^T    | (I-J^+J)     | M matrix     | Lambda       |
+| Concept  | (JJ^T)^-1    | q0_dot       |              | J_bar=       |
+|          |              |              |              | M^-1 J^T     |
+|          |              |              |              | Lambda       |
++----------+--------------+--------------+--------------+--------------+
+| Advan-   | Simple, fast | Redundancy   | Accurate     | Task space   |
+| tages    |              | utilization  | joint ctrl   | direct ctrl  |
++----------+--------------+--------------+--------------+--------------+
+| Disad-   | No dynamics  | No dynamics  | Indirect     | Complex      |
+| vantages |              |              | task ctrl    | computation, |
+|          |              |              |              | singularities|
++----------+--------------+--------------+--------------+--------------+
+
+[Pseudo-Inverse vs Dynamically Consistent Inverse]
+
+This is the biggest difference between HW3 and HW5!
+
+**HW3: Kinematic Pseudo-Inverse**
+J^+ = J^T(J*J^T)^-1
+
+Nullspace: Nk = I - J^+*J
+
+q_dot = J^+*xd_dot + Nk*q0_dot
+
+**Problems**:
+- Nullspace control can affect task
+- Not energy-efficient
+- Ignores dynamics
+
+**HW5: Dynamically Consistent Inverse**
+J_bar = M^-1*J^T*Lambda = M^-1*J^T*(J*M^-1*J^T)^-1
+
+Nullspace: Nd = I - J^T*J_bar^T = I - J^T*Lambda*J*M^-1
+
+tau = J_bar^T*F + Nd*tau_0
+
+**Advantages**:
+① Dynamic decoupling: Nd*J^T = 0
+   -> Nullspace control has ZERO effect on task
+
+② Energy optimal: Minimizes kinetic energy
+   KE = 0.5*q_dot^T*M*q_dot
+
+③ Inertia weighting: Weighted by M matrix
+   -> Heavier joints move less
+
+**Proof** (Dynamic decoupling):
+Nd*J^T = (I - J^T*J_bar^T)*J^T
+       = J^T - J^T*J_bar^T*J^T
+       = J^T - J^T*(Lambda*J*M^-1)*J^T
+       = J^T - J^T*Lambda*(J*M^-1*J^T)
+       = J^T - J^T*Lambda*Lambda^-1
+       = J^T - J^T
+       = 0 ✓
+
+This is impossible with HW3's kinematic nullspace!
+
+[Gravity Compensation Role]
+
+**G in HW4**:
+tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+
+M*q_ddot + C*q_dot + G = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+-> M*q_ddot + C*q_dot = M{kp(qd-q) + kv(qd_dot-q_dot)}
+
+G cancels gravity, eliminating steady-state error.
+
+**G in HW5**:
+tau = J^T*Lambda*F* + N*tau_0 + G
+
+M*q_ddot + C*q_dot + G = J^T*Lambda*F* + N*tau_0 + G
+-> M*q_ddot + C*q_dot = J^T*Lambda*F*
+
+Left multiply by J*M^-1:
+J*M^-1*M*q_ddot + J*M^-1*C*q_dot = J*M^-1*J^T*Lambda*F*
+x_ddot + J*M^-1*C*q_dot = Lambda^-1*Lambda*F* = F*
+
+For low speed (C ≈ 0):
+-> x_ddot ≈ F* = kp(xd-x) + kv(xd_dot-x_dot)
+
+Similarly, G cancels gravity, but in different spaces:
+- HW4: G cancels in joint space
+- HW5: G cancels in joint space -> Effect appears in task space
+
+[2-Phase Control Rationale]
+
+**Why is preparation phase needed?**
+
+Problems 1 and 2 both:
+- Phase 1: Joint space control to reach qi
+- Phase 2: Task space control
+
+**Reasons**:
+① Consistent initial configuration
+   - Start all experiments from same initial posture
+   - Enables fair comparison
+
+② Singularity avoidance
+   - Starting from arbitrary posture may encounter singularities
+   - qi is chosen to be far from singularities
+
+③ Task space control verification
+   - Phase 1: Uses HW4_4 algorithm (already verified)
+   - Phase 2: Purely evaluates HW5 techniques
+
+④ Practical relevance
+   - Real robots: Home position -> Working configuration -> Task
+   - Reflects same procedure
+
+**Why use HW4_4?**
+HW4_4 = PD + M + G (dynamic compensation)
+- Best performance (0.23 sec settling)
+- No overshoot
+- Fast and accurate convergence to qi
+
+**New Implementation Advantage**:
+Separating into distinct control modes (Keys 3&6 for preparation, Keys 4,5,7
+for execution) provides better modularity and user control compared to a
+single function with time-based phase switching.
+
+
+---------------------------------------------------------------------------
+Overall Comparison and Conclusions
+---------------------------------------------------------------------------
+
+[HW5 Core Contributions]
+
+1. **Control Space Transition**: Joint Space -> Task Space
+   - Intuitive control: "Move EE 10cm"
+   - Easy path planning: Cartesian space trajectory
+   - Task-oriented control
+
+2. **Operational Space Dynamics**:
+   - Lambda = (J*M^-1*J^T)^-1: Task space inertia
+   - J_bar = M^-1*J^T*Lambda: Dynamically consistent inverse
+   - Dynamic decoupling: Complete separation of task and nullspace
+
+3. **Redundancy Utilization**:
+   - Primary task: EE position/orientation control
+   - Secondary task: Nullspace control (future extensible)
+   - N = I - J^T*J_bar^T: Dynamic nullspace projector
+
+4. **Safety Constraints**:
+   - Velocity saturation (Problem 2)
+   - Collision avoidance, operator safety
+   - Foundation of constrained optimization
+
+[Assignment Series Overall Flow]
+
+HW2 -> HW3 -> HW4 -> HW5 follows this learning path:
+
+**Level 1: Kinematics** (HW2)
+- Jacobian, pseudo-inverse
+- Velocity control only
+- Ignores dynamics
+
+**Level 2: Kinematic Redundancy** (HW3)
+- Nullspace control
+- Redundancy utilization
+- Still ignores dynamics
+
+**Level 3: Joint Space Dynamics** (HW4)
+- M, G compensation
+- Accurate torque control
+- Limited to joint space
+
+**Level 4: Task Space Dynamics** (HW5) <- Final stage
+- Lambda, G compensation
+- Dynamic nullspace
+- Direct task space control
+- Safety constraints considered
+
+[Comparison Table: Joint Space vs Task Space Control]
+
++--------------+---------------------+---------------------+
+|    Item      | Joint Space (HW4)   | Task Space (HW5)    |
++--------------+---------------------+---------------------+
+| Target       | qd (joint angles)   | xd (EE pose)        |
++--------------+---------------------+---------------------+
+| Error        | e = qd - q          | e = xd - x, delta   |
+|              |                     | Phi                 |
++--------------+---------------------+---------------------+
+| Inertia      | M(q) in R^(7x7)     | Lambda(q) in        |
+|              |                     | R^(6x6)             |
++--------------+---------------------+---------------------+
+| Control Law  | tau = M{kp(qd-q)    | tau = J^T*Lambda    |
+|              | + kv(qd_dot-q_dot)} | {kp(xd-x) +         |
+|              | + G                 | kv(xd_dot-x_dot)}   |
+|              |                     | + N*tau_0 + G       |
++--------------+---------------------+---------------------+
+| Closed-loop  | q_ddot ≈ kp(qd-q)   | x_ddot ≈ kp(xd-x)   |
+| Dynamics     | + kv(qd_dot-q_dot)  | + kv(xd_dot-x_dot)  |
++--------------+---------------------+---------------------+
+| Nullspace    | None                | N = I - J^T*J_bar^T |
++--------------+---------------------+---------------------+
+| Advantages   | ① Direct control    | ① Intuitive control |
+|              | ② No singularities  | ② Easy path plan    |
+|              | ③ Simple compute    | ③ Nullspace use     |
++--------------+---------------------+---------------------+
+| Disadvant-   | ① Indirect task     | ① Singularities     |
+| ages         | ② Hard path plan    | ② Complex compute   |
+|              | ③ No nullspace      | ③ Indirect control  |
++--------------+---------------------+---------------------+
+| Applications | ① Point-to-point    | ① Assembly          |
+|              | ② Joint coord       | ② Welding           |
+|              | ③ Singularity-free  | ③ Path following    |
+|              | motion              | ④ Force control     |
++--------------+---------------------+---------------------+
+
+[When to Use Which Control?]
+
+**Prefer Joint Space Control (HW4)**:
+- Point-to-point motion (path irrelevant)
+- Joint limit avoidance is critical
+- Limited computational resources
+- Working near singularities
+
+**Prefer Task Space Control (HW5)**:
+- Accurate Cartesian path required
+- Assembly, welding, painting tasks
+- Combined with force control
+- Nullspace optimization needed (e.g., obstacle avoidance)
+
+In practice, **Hybrid Control** is often used:
+- Coarse motion: Joint space
+- Fine motion: Task space
+- Force control: Task space
+- Redundancy resolution: Nullspace
+
+[HW5 Practical Extensions]
+
+Basic concepts in this assignment can be extended to:
+
+1. **Hybrid Position/Force Control**:
+   tau = J^T*Lambda[Sf*Ff + Sp*Fp] + N*tau_0 + G
+   - Sf: Force selection matrix
+   - Sp: Position selection matrix
+   - Example: Move along surface while applying constant force
+
+2. **Impedance Control**:
+   F = Md(xd_ddot - x_ddot) + Bd(xd_dot - x_dot) + Kd(xd - x)
+   - Implements desired mechanical impedance
+   - Human-robot interaction
+
+3. **Adaptive Task Space Control**:
+   Estimate Lambda_hat (when actual Lambda is unknown)
+   - Parameter adaptation
+   - Robust control
+
+4. **Multi-Task Control**:
+   tau = Sum_i J_i^T * Lambda_i * F_i + N_12...n * tau_0 + G
+   - Task hierarchy
+   - Priority-based control
+
+[Final Conclusions]
+
+HW5 Task Space Control is a core technique in robot control:
+
+**Theoretical Significance**:
+1. Understanding operational space dynamics
+2. Necessity of dynamically consistent inverse
+3. Concept of dynamic nullspace
+4. Mathematical foundation of task-oriented control
+
+**Practical Significance**:
+1. Intuitive control (Cartesian space)
+2. Easy path planning
+3. Integration of safety constraints (velocity saturation)
+4. Effective redundancy utilization
+
+**Relationship with HW4**:
+- HW4: Control "how" to move in joint space
+- HW5: Control "what" to do in task space
+- Complementary: Selective use depending on situation
+
+**Key Equations Summary**:
+
+Joint Space Dynamics (HW4):
+M(q)*q_ddot + C(q,q_dot)*q_dot + G(q) = tau
+tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+-> q_ddot ≈ kp(qd-q) + kv(qd_dot-q_dot)
+
+Task Space Dynamics (HW5):
+Lambda(q)*x_ddot + mu(q,q_dot) + p(q) = F
+tau = J^T*Lambda{kp(xd-x) + kv(xd_dot-x_dot)} + N*tau_0 + G
+-> x_ddot ≈ kp(xd-x) + kv(xd_dot-x_dot)
+
+where:
+- Lambda = (J*M^-1*J^T)^-1
+- J_bar = M^-1*J^T*Lambda
+- N = I - J^T*J_bar^T
+- delta_Phi = 0.5(nd×nc + sd×sc + ad×ac)
+
+Through this assignment, we clearly understand the differences between
+Joint Space and Task Space, grasp their respective advantages and
+disadvantages, and establish the foundation needed for designing
+actual robot control systems.
+
+
+==============================================================================
+End of Discussion
+==============================================================================

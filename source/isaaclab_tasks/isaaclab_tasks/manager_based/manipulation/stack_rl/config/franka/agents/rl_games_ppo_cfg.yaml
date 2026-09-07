@@ -1,0 +1,110 @@
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+params:
+  seed: 42
+
+  # environment wrapper clipping
+  env:
+    clip_observations: 100.0
+    clip_actions: 100.0
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: actor_critic
+    separate: False
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: True
+    mlp:
+      units: [256, 128, 64]
+      activation: elu
+      d2rl: False
+
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
+  load_checkpoint: False # flag which sets whether to load the checkpoint
+  load_path: '' # path to the checkpoint to load
+
+  config:
+    name: franka_stack_rl
+    env_name: rlgpu
+    device: 'cuda:0'
+    device_name: 'cuda:0'
+    multi_gpu: False
+    ppo: True
+    mixed_precision: False
+    normalize_input: True
+    normalize_value: True
+    value_bootstrap: False
+    num_actors: -1
+    reward_shaper:
+      # 20251211 수정: 0.01 → 0.1
+      # 이유: 최대 reward 229가 0.01 scale로 2.29가 되어 너무 작았음
+      #       IsaacGym(16, scale 1.0), IsaacLab(37, scale 0.01=0.37) 참고
+      #       0.1로 변경 시 229 → 22.9 (IsaacGym의 16과 유사한 범위)
+      #       분석 문서: DIFFERENCE_LIFT_AND_GYM_STACK_AND_WHATTODO_IN_OUR.md 참고
+      scale_value: 0.1
+    normalize_advantage: True
+    gamma: 0.99
+    tau: 0.95
+    # 20251211 수정: 1e-4 → 5e-4
+    # 이유: IsaacGym에서 5e-4로 성공적으로 학습됨
+    #       낮은 LR(1e-4)은 학습 속도를 느리게 만들고,
+    #       특히 증가된 reward scale(0.1)과 조합 시 더 높은 LR 필요
+    #       IsaacGym 환경 분석 결과 5e-4가 적절함
+    learning_rate: 5e-4
+    lr_schedule: adaptive
+    schedule_type: legacy
+    kl_threshold: 0.01
+    score_to_win: 100000000
+    max_epochs: 20000 #50000 -> 너무오래걸림 #10000  # Stack is harder than lift, need more training
+    save_best_after: 200
+    save_frequency: 100
+    print_stats: True
+    grad_norm: 1.0
+    entropy_coef: 0.001
+    truncate_grads: True
+    e_clip: 0.2
+    # 20251211 유지: horizon_length = 64
+    # 이유: 3-cube stacking은 2-cube보다 2배 어려움 (cube 2개를 쌓아야 함)
+    #       IsaacGym (2-cube): horizon=32
+    #       우리 (3-cube): horizon=64 (2배, 합리적)
+    #       Phase 1(cube_2 stacking) + Phase 2(cube_3 stacking) 고려
+    horizon_length: 64  # Longer than lift (24) because stack is a longer task
+    # 20251211 수정: 32768 → 16384
+    # 이유: 과도한 minibatch size는 overfitting 유발 가능
+    #       IsaacGym: 16384 사용
+    #       32768 × 8 epochs = 262,144 updates (너무 많음)
+    #       16384 × 5 epochs = 81,920 updates (IsaacGym과 유사)
+    #       nono. 1211수정 again(0106) : isaaclab그대로 유지 -> 32768
+    minibatch_size: 32768
+    # 20251211 수정: 8 → 5
+    # 이유: mini_epochs가 너무 많으면 overfitting 위험
+    #       IsaacGym: 5 사용
+    #       minibatch_size 감소와 함께 조정하여 안정성 향상
+    #       nono. 1211수정 again(0106) : isaaclab그대로 유지 -> 8
+    mini_epochs: 8 # 5
+    critic_coef: 4
+    clip_value: True
+    clip_actions: False
+    seq_len: 4
+    bounds_loss_coef: 0.0001

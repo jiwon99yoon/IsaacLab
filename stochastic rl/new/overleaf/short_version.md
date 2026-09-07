@@ -1,0 +1,559 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%2345678901234567890123456789012345678901234567890123456789012345678901234567890
+%        1         2         3         4         5         6         7         8
+
+\documentclass[10pt]{article}       
+\usepackage{geometry}               
+%\geometry{letterpaper}             
+
+\geometry{letterpaper, margin=1in}
+
+% The following packages can be found on http:\\www.ctan.org
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{subcaption}
+%\usepackage{epsfig} % for postscript graphics files
+%\usepackage{mathptmx} % assumes new font selection scheme installed
+%\usepackage{times} % assumes new font selection scheme installed
+\usepackage{amsmath} % assumes amsmath package installed
+\usepackage{amssymb}  % assumes amsmath package installed
+\usepackage{amsthm}  % assumes amsmath package installed
+\usepackage{bm}
+\usepackage{lipsum}
+%\usepackage[linesnumbered, ruled]{algorithm2e}'
+\usepackage{color}
+\usepackage{enumitem}
+\usepackage{cite}
+\usepackage{wrapfig}
+\usepackage{float}
+
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{remark}{Remark}
+
+
+
+\DeclareMathOperator*{\argmax}{arg\,max}
+\DeclareMathOperator*{\cart}{\times}
+
+\title{A Comparative Study of Underactuated and Fully Actuated Dexterous Hands in Reinforcement Learning-Based Manipulation}
+
+\author{
+Jiwon Yoon\thanks{Department of
+Transdisciplinary Studies, Graduate School of Convergence Science and
+Technology, Seoul National University({yabc0908@snu.ac.kr}). }
+}
+
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Dexterous manipulation with reinforcement learning (RL) has primarily focused on fully-actuated multi-fingered hands, leaving unexplored whether underactuated designs—successful in traditional control—offer advantages in learning-based paradigms. This study presents a systematic comparison between a 20-DoF fully-actuated hand (Tesollo DG5F) and a 6-DoF underactuated hand (Inspire RH56F1) on an object lifting task, isolating actuation structure as the sole experimental variable under identical training conditions (Proximal Policy Optimization, 7500 epochs, 1.1 billion timesteps, curriculum learning with Automatic Domain Randomization).
+
+Results reveal a dramatic performance gap: DG5F successfully learned manipulation (total reward 18--19, success reward $\sim$3.3), while RH56F1 completely failed (total reward $\sim$2.0, zero success) despite superior performance on approach behavior (finger-object distance 0.67 vs 0.52). Analysis identifies a critical \textit{local optimum trap}—RH56F1 maximized dense rewards without discovering grasping strategies, exhibiting 47\% lower policy entropy and zero curriculum progression. This failure stems from three compounding factors: reduced exploration from mechanical coupling, insufficient expressiveness for fine-grained control, and inability to escape reward shaping traps.
+
+These findings suggest underactuated hands face fundamental challenges in RL-based learning for tasks requiring precise manipulation beyond adaptive grasping, highlighting the critical role of actuation structure in determining learning dynamics and emergent behaviors.
+\end{abstract}
+
+\section{Introduction}
+
+Dexterous manipulation remains one of the most challenging problems in robotic control due to high-dimensional action spaces, complex contact dynamics, and intricate coordination requirements among multiple fingers \cite{yu2022dexterous}. Recent advances in reinforcement learning (RL) have demonstrated impressive capabilities in learning complex manipulation skills when combined with large-scale GPU-accelerated simulation, curriculum learning, and carefully designed reward structures \cite{rajeswaran2018dexterous, andrychowicz2020learning}. Notable achievements include in-hand object rotation \cite{openai2019rubiks}, robust grasping across diverse object geometries \cite{petrenko2023dexpbt}, and sim-to-real transfer for dexterous tasks \cite{qi2023dexpoint}. These successes have primarily been achieved using fully-actuated multi-fingered hands—systems where each joint is independently controlled, providing maximum expressiveness at the cost of high-dimensional action spaces. Platforms such as the Shadow Hand, Allegro Hand \cite{allegro_hand}, and Tesollo DG5F \cite{Tesollo_dg5f} have become standards in RL research due to their ability to execute fine-grained finger motions required for complex manipulation primitives.
+
+Despite this progress, most existing studies focus on algorithmic improvements—such as more sample-efficient RL methods \cite{schulman2017ppo, lopes2025lookahead}, better reward engineering, or advanced sim-to-real transfer strategies \cite{qi2023dexpoint}—while treating the hand's mechanical and actuation structure as a fixed design choice. Comparatively little attention has been paid to how the degree of actuation and mechanical coupling affect the learning process itself. In particular, the fundamental trade-off between fully-actuated hands (high DoF, independent joint control) and underactuated hands (coupled actuation via passive mechanical linkages) has not been systematically investigated in the context of RL-based manipulation.
+
+From a hardware perspective, underactuated hands have been extensively studied as mechanically simpler and more robust alternatives to fully-actuated systems \cite{deimel2013novel, birglen2009underactuated}. By coupling multiple finger joints through passive mechanisms such as tendons, springs, or compliant structures, underactuated designs reduce the number of control inputs while enabling adaptive grasping behaviors that naturally conform to object shapes \cite{catalano2014softhand, dollar2011underactuated}. These properties have proven successful in traditional control settings for industrial grasping and prosthetic applications. However, whether the mechanical simplicity that benefits model-based control translates to advantages in learning-based paradigms remains an open question. Underactuation inherently restricts the hand's expressiveness by constraining finger motions to coordinated synergies rather than independent articulation, potentially affecting exploration efficiency, policy expressiveness, and the ability to discover complex manipulation strategies.
+
+To address this gap, this work conducts a systematic comparison between a fully-actuated 5-finger hand (Tesollo DG5F, 20 DoF) and an underactuated 5-finger hand (Inspire RH56F1, 6 DoF) under rigorously controlled experimental conditions. Both systems are trained using identical RL algorithms (Proximal Policy Optimization \cite{schulman2017ppo}), reward functions, neural network architectures, training durations (7500 epochs), and curriculum learning protocols (Automatic Domain Randomization). The task is object lifting—a canonical manipulation primitive requiring coordinated approach, grasping, lifting, and positioning behaviors. By isolating the actuation structure as the sole experimental variable, this study illuminates how hardware design choices influence learning dynamics, task performance, and emergent manipulation strategies in RL-based dexterous manipulation.
+
+\section{Background and Related Work}
+
+This section provides the necessary background on reinforcement learning and reviews relevant prior work on dexterous manipulation, hand design, and the intersection of hardware structure and learning-based control.
+
+\subsection{Proximal Policy Optimization (PPO)}
+
+The experiments employ \textbf{Proximal Policy Optimization (PPO)} \cite{schulman2017ppo}, a policy gradient algorithm proven effective for high-dimensional continuous control tasks including dexterous manipulation \cite{rajeswaran2018dexterous, petrenko2023dexpbt}. PPO uses a clipped surrogate objective to constrain policy updates within a trust region, preventing catastrophic performance collapse while maintaining sample efficiency through mini-batch updates. The clipped objective is:
+
+\begin{equation}
+L_t^{\text{CLIP}}(\theta) = \min \left( r_t(\theta) \hat{A}_t, \, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t \right)
+\end{equation}
+
+where $r_t(\theta) = \frac{\pi_\theta(a_t | s_t)}{\pi_{\theta_{\text{old}}}(a_t | s_t)}$ is the probability ratio and $\epsilon = 0.2$ is the clipping parameter \cite{wang2019truly}. This work uses PPO as implemented in RL-Games \cite{rlgames}, enabling massively parallel training across 4,096 GPU-simulated environments.
+
+\subsection{Dexterous Manipulation with Reinforcement Learning}
+
+Recent work has demonstrated that deep RL can learn complex dexterous manipulation despite high-dimensional action spaces. \textbf{Rajeswaran et al.} \cite{rajeswaran2018dexterous} showed that high-DoF hands (24-DoF Shadow Hand) face severe exploration challenges, motivating the hypothesis that underactuated hands may reduce exploration difficulty through mechanical coupling. \textbf{DexPBT} \cite{petrenko2023dexpbt} achieved complex manipulation through massive parallelization (16,384 environments) and Automatic Domain Randomization (ADR). This work adopts similar scale (4,096 environments) and ADR curriculum, extending DexPBT by systematically comparing actuation structures. \textbf{DexPoint} \cite{qi2023dexpoint} demonstrated that point cloud observations improve generalization; this best practice is incorporated here. \textbf{OpenAI's Rubik's Cube} \cite{openai2019rubiks} showcased domain randomization for sim-to-real transfer; extensive randomization across object properties, robot dynamics, and friction is similarly employed.
+
+\subsection{Underactuated vs Fully-Actuated Hand Designs}
+
+Underactuated hands reduce control complexity through mechanical coupling \cite{catalano2014softhand, dollar2011underactuated}, achieving adaptive grasps via passive compliance. While successful in classical control \cite{sintov2019underactuated}, their compatibility with RL remains unexplored. \textbf{Lopes et al.} \cite{lopes2025lookahead} identified that most comparisons confound multiple variables (arms, tasks, algorithms). This work addresses this gap by isolating actuation structure as the sole experimental variable under controlled RL training conditions.
+
+\section{Method}
+
+\subsection{Problem Definition and Comparative Robot Hands}
+
+This study aims to systematically compare and analyze the learning performance differences between \textbf{underactuated hands} and \textbf{fully-actuated hands} in reinforcement learning-based dexterous manipulation tasks. To this end, two commercial robot hands that mimic the five-finger structure of the human hand were selected, each with distinct actuation mechanisms.
+
+\subsubsection{5-Finger Hand Selection Rationale}
+
+Existing dexterous manipulation research has predominantly used 4-finger hands such as the Allegro Hand \cite{allegro_hand} as benchmark. However, a \textbf{5-finger structure} was adopted for the following reasons:
+
+First, \textbf{compatibility with humanoid robots}: Recent commercial humanoid robots such as Tesla Optimus, Figure 01, and 1X NEO have adopted 5-finger hands \cite{humanoid_hands}, and the 5-finger structure provides a more natural interface for human-robot interaction and tool use. Second, \textbf{workspace symmetry}: The 5-finger structure including the thumb can form a more balanced contact distribution when grasping objects with enveloping or precision grasps. Third, \textbf{practical industrial applications}: While the Allegro Hand is primarily limited to research applications, the two hands selected in this study (DG5F and Inspire RH56F1) are actually being deployed in industrial sites and service robot fields, offering high practical utility \cite{Tesollo_dg5f, inspire_rh56f1}.
+
+Therefore, two hands were selected that \textbf{maintain the same 5-finger structure but differ only in actuation mechanism} to analyze the impact of actuation architecture on reinforcement learning performance in a controlled environment. Figure \ref{fig:hand_comparison} shows the two robotic hands used in this study, visualized in the Isaac Sim environment.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\linewidth]{RH56F1_R(Left)vsDG5F(Right).png}
+    \caption{Comparison of dexterous hand designs used in this study, visualized in the Isaac Sim \\
+    \textbf{Left}: Inspire RH56F1 hand (6-DoF, underactuated).
+    \textbf{Right}: Tesollo DG5F hand (20-DoF, fully actuated).}
+    \label{fig:hand_comparison}
+\end{figure}
+
+\subsubsection{DG5F: Fully-Actuated Dexterous Hand}
+
+As shown in Figure \ref{fig:hand_comparison} (right), the \textbf{DG5F (Delto Gripper-5 Finger)} is a fully-actuated 5-finger robotic hand developed by Tesollo in South Korea \cite{Tesollo_dg5f}. The hand has \textbf{20 degrees of freedom (20-DoF)} with all joints independently controlled by separate motors. The hand is approximately 20 cm in length with a payload capacity of 2.5--5 kg for pinching and 10--20 kg for enveloping grasps. Analysis of the DG5F URDF file reveals 20 \texttt{revolute} joints, each capable of independent torque control. When combined with the UR10e 6-DoF arm, this creates a \textbf{26-dimensional continuous action space (6 arm + 20 hand)}, which presents significant exploration challenges in reinforcement learning due to the high-dimensional policy space.
+
+\subsubsection{Inspire RH56F1: Underactuated Dexterous Hand}
+
+In contrast, as shown in Figure \ref{fig:hand_comparison} (left), the \textbf{Inspire RH56F1} is an underactuated 5-finger robotic hand developed by Inspire Robots in China \cite{inspire_rh56f1}. The hand uses \textbf{6 linear servo actuators} to drive \textbf{12 joints} through mechanical coupling, where each actuator controls two joints simultaneously. The hand is approximately 12--15 cm in length, about 60--75\% of the DG5F size, with a fingertip gripping force of 15 N. Analysis of the Inspire RH56F1 URDF file shows 12 \texttt{revolute} joints, but only 6 are independently actuated \cite{birglen2009underactuated}. When combined with the UR10e arm, this creates a \textbf{12-dimensional continuous action space (6 arm + 6 hand)}, exactly half the dimensionality of the DG5F system. This underactuated design incorporates adaptive synergies through mechanical coupling, mimicking the synergistic motion patterns of the human hand \cite{catalano2014softhand}, and provides passive compliance that allows the hand to adapt to object shapes during contact.
+
+\subsubsection{Underactuated vs Fully-Actuated: Fundamental Differences}
+
+As can be seen from Figure \ref{fig:hand_comparison}, the fundamental difference between the two hands lies in the relationship between actuated and joint DoF \cite{dollar2011underactuated}: the DG5F (right) has 20 independently actuated joints (actuated DoF = joint DoF), enabling arbitrary finger configurations but resulting in a 26-dimensional action space. The Inspire (left) has only 6 actuators controlling 12 coupled joints (actuated DoF $<$ joint DoF), constraining finger configurations to synergistic patterns but reducing the action space to 12 dimensions.
+
+These architectural differences create three key trade-offs from a reinforcement learning perspective. First, \textbf{exploration difficulty}: the DG5F faces a high-dimensional exploration problem with low contact probability during random exploration, while the Inspire's mechanical constraints provide implicit regularization that may facilitate contact-rich state discovery. Second, \textbf{expressiveness}: the DG5F can learn complex manipulation strategies including finger walking and precision grasps, whereas the Inspire is limited to synergistic motions primarily suited for power grasps. Third, \textbf{sample efficiency}: the DG5F's high dimensionality may require extensive exploration to discover effective policies, while the Inspire's reduced action space may enable faster convergence.
+
+This study systematically analyzes how these trade-offs manifest in practice under \textbf{identical task, algorithm (PPO), and robot arm (UR10e)} conditions.
+
+\subsection{Experimental Environment: Isaac Lab-Based Dexsuite Benchmark}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\linewidth]{iiwa_allegro_dexsuite.png}
+    \caption{Kuka iiwa7 + allegro hand, visualized in the IsaacLab Dexsuite task. This represents the original Dexsuite benchmark configuration.}
+    \label{fig:iiwa_allegro}
+\end{figure}
+
+\subsubsection{Isaac Lab Simulation Framework}
+
+The experiments are conducted using the NVIDIA Isaac Lab simulation environment \cite{isaaclab}, a GPU-based parallel physics simulation engine that enables high-speed training infrastructure capable of simulating thousands of environments simultaneously. A single NVIDIA GeForce RTX 5090 GPU (32 GB VRAM) is utilized to simulate \textbf{4,096 parallel environments}, achieving training speeds hundreds of times faster than traditional CPU-based simulation. Combined with RL-Games \cite{rlgames}, a GPU-accelerated vectorized reinforcement learning implementation, complex contact-rich manipulation scenarios can be learned in real-time.
+
+\subsubsection{Dexsuite Benchmark and Prior Work}
+
+The experimental environment is based on the Dexsuite benchmark proposed in DexPBT \cite{petrenko2023dexpbt}, a large-scale reinforcement learning framework for hand-arm systems that demonstrated the ability to learn complex dexterous manipulation behaviors through Population Based Training (PBT) and massive parallelization (16,384 environments). Additionally, DexPoint \cite{qi2023dexpoint} showed that point cloud-based perception improves generalization performance across diverse object shapes compared to proprioceptive-only inputs. This work follows the design principles of these prior works while adjusting the experimental protocol to \textbf{systematically analyze the influence of hand actuation structure}.
+
+The original Dexsuite benchmark used a KUKA iiwa 7-DoF arm with the Allegro Hand (Figure \ref{fig:iiwa_allegro}). This work instead employs the \textbf{UR10e 6-DoF collaborative robot} to avoid kinematic redundancy that could confound hand actuation effects. The UR10e provides minimal DoF for 3D control without redundancy, isolating the influence of hand structure on learning. Figure \ref{fig:ur10e_scenes} illustrates the UR10e configurations with DG5F and Inspire hands.
+
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{ur10e_dg5f_dexsuite.png}
+        \caption{UR10e + Tesollo DG5F (20-DoF) in Isaac Sim}
+        \label{fig:ur10e_dg5f_scene}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{ur10e_inspire_dexsuite.png}
+        \caption{UR10e + Inspire RH56F1 (6-DoF) in Isaac Sim}
+        \label{fig:ur10e_inspire_scene}
+    \end{subfigure}
+
+    \caption{Simulation environments used in the controlled comparison.
+    (a) UR10e with a fully actuated DG5F hand and (b) UR10e with an underactuated RH56F1 hand.
+    Both scenes are rendered in Isaac Sim with identical task definitions and reward structure.}
+    \label{fig:ur10e_scenes}
+\end{figure}
+
+\subsubsection{Task Definition: Object Lifting}
+
+The experimental task is defined as an \textbf{object lifting} problem where the robot must lift an object from a table and move it to a randomly sampled target position. Unlike the Dexsuite reorientation task, \textbf{orientation is not controlled}—this task focuses solely on \textbf{position control} in 3D space. The task requires finger coordination, contact management, and stable grasping to achieve position precision.
+
+\subsubsection{Object Diversity and Complexity}
+
+The experiment uses \textbf{16 object variations}: four primitive shapes (cube, sphere, capsule, cone) with four different sizes each. This diversity prevents overfitting and encourages generalized manipulation strategies. At each episode start, the object type, size, initial position, and pose are randomly sampled, forcing the robot to learn robust policies across diverse conditions.
+
+\subsubsection{Object Scaling Based on Hand Size}
+
+To ensure fair comparison, \textbf{hand-size-proportional object scaling} is adopted: DG5F uses \textbf{1.0$\times$ scale} (original Kuka-Allegro benchmark sizes), while Inspire uses \textbf{0.5$\times$ scale} (dimensions halved), reflecting their approximate palm size ratio of 2:1. This maintains similar relative object-to-hand size ratios, equalizing geometric difficulty. However, object mass is kept constant at 0.2 kg for both systems to evaluate hardware capability differences under identical physical conditions. Reward function parameters are adjusted proportionally for the Inspire to maintain consistent precision requirements.
+
+\subsection{Reinforcement Learning Formulation and Training Setup}
+
+Building on the PPO algorithm introduced in Section 2.1, this section describes how the reinforcement learning problem is formalized in the dexterous manipulation environment.
+
+\subsubsection{MDP Setup and PPO Hyperparameters}
+
+The environment is formalized as an MDP $(\mathcal{S}, \mathcal{A}, \mathcal{P}, R, \gamma)$. The state space $\mathcal{S}$ comprises robot proprioception, object pose, target pose, and point cloud-based perception (detailed in Section 3.3.2). The action space $\mathcal{A}$ is continuous: 26 dimensions for DG5F (6 arm + 20 hand) and 12 dimensions for Inspire (6 arm + 6 hand). The transition probability $\mathcal{P}$ is determined by Isaac Lab's GPU-based PhysX engine, which accurately simulates contact dynamics, friction, and gravity. The discount factor is $\gamma = 0.99$.
+
+For PPO training, the following key hyperparameters are used: clipping parameter $\epsilon = 0.2$, KL divergence threshold 0.01 with adaptive learning rate, entropy coefficient 0.001, and gradient clipping with norm 1.0. Each update collects data over horizon length 36 steps and reuses it for 5 mini-epochs with minibatch size 36,864, leveraging importance sampling and clipping for sample efficiency. The critic coefficient is set to 4.0 to emphasize value function learning.
+
+\textbf{Observation-State Equivalence:} Although the environment is technically a POMDP (point clouds are partial observations, randomized physics parameters are hidden), it is treated as an MDP following standard practice in robotic manipulation \cite{petrenko2023dexpbt, qi2023dexpoint}. This is justified by: (1) 5-step history stacking enables velocity and dynamics inference, (2) point clouds provide rich shape information sufficient for generalization, and (3) contact feedback allows implicit physics parameter inference. In the implementation, observations and states are identical—both actor and critic receive the same information.
+
+\subsubsection{Observation Space Structure}
+
+Following DexPoint \cite{qi2023dexpoint}, the observation space consists of three groups with 5-step history stacking: \textbf{Policy} (goal information: object pose, target pose, action history), \textbf{Proprioception} (robot state: joint positions/velocities, fingertip states, contact forces), and \textbf{Perception} (object point cloud: 64 points). DG5F observations total 1870 dimensions while Inspire totals 1660 dimensions, with the 210-dimension difference stemming from DoF disparity (26 vs 12) amplified by history stacking.
+
+\subsubsection{Reward Function Design}
+
+The reward function combines sparse rewards (success: weight 10.0), dense rewards (position tracking: 2.0, orientation tracking: 4.0, fingers-to-object: 1.0), and penalties (action regularization, ground contact), adapted from Dexsuite \cite{petrenko2023dexpbt}. Position-related parameters are scaled proportionally for hand size (e.g., $\sigma_{\text{pos}} = 0.1$m for DG5F, 0.05m for Inspire) to maintain equivalent geometric difficulty.
+
+\subsubsection{Neural Network Architecture}
+
+A separate actor-critic architecture is employed with independent parameters for stability. Both networks use 3-layer MLPs [512, 256, 128] with ELU activation. The actor outputs a Gaussian policy ($\mu$, fixed $\sigma = 1.0$), while the critic estimates the state value function $V(s)$. Advantage estimation uses GAE with $\tau = 0.95$.
+
+\subsection{Curriculum Learning and Domain Randomization}
+
+Following DexPBT \cite{petrenko2023dexpbt}, ADR-based curriculum learning automatically adjusts environment difficulty based on success rate. Gravity curriculum progresses from [0, 0, 0] to [0, 0, -9.81], with additional randomization across joint friction [0.0, 5.0], object mass [0.2, 2.0]$\times$, and joint stiffness/damping [0.8, 1.2]$\times$. Domain randomization \cite{openai2019rubiks} includes robot/object friction, object pose, and joint positions to ensure sim-to-real robustness.
+
+\subsubsection{Final Experimental Configuration}
+
+Following the design principles above, the comparative experiment is configured as shown in Table \ref{tab:training_comparison}. The two systems are trained under \textbf{identical task (object lifting), identical algorithm (PPO), identical reward structure, and identical curriculum learning (ADR)} conditions. The only differences are the \textbf{hand actuation structure} (underactuated vs fully-actuated) and the resulting degrees of freedom and observation/action dimensionalities. Through this controlled experimental design, the pure influence of actuation structure on reinforcement learning performance can be isolated and analyzed.
+
+\section{Experiments}
+
+\begin{table}[h]
+\centering
+\caption{Experimental Configuration and Training Protocol Comparison}
+\label{tab:training_comparison}
+\begin{tabular}{lcc}
+\hline
+\textbf{Configuration} & \textbf{UR10e + DG5F} & \textbf{UR10e + Inspire} \\
+\hline
+\multicolumn{3}{l}{\textit{Identical Conditions (Controlled Variables)}} \\
+\hline
+Robot Arm & UR10e (6-DoF) & UR10e (6-DoF) \\
+RL Algorithm & PPO & PPO \\
+Network Architecture & 3-layer MLP [512, 256, 128] & 3-layer MLP [512, 256, 128] \\
+Activation Function & ELU & ELU \\
+Hyperparameters & Identical (lr, batch, horizon) & Identical (lr, batch, horizon) \\
+Task & Object lifting (position-only) & Object lifting (position-only) \\
+Reward Structure & Same terms \& weights & Same terms \& weights \\
+Domain Randomization & Same physics ranges & Same physics ranges \\
+Curriculum Learning & ADR & ADR \\
+Training Duration & 7,500 epochs & 7,500 epochs \\
+Total Timesteps & $\sim$1.106B steps & $\sim$1.105B steps \\
+Parallel Environments & 4,096 & 4,096 \\
+\hline
+\multicolumn{3}{l}{\textit{Necessary Adjustments (Due to Actuation Structure)}} \\
+\hline
+Robot Hand & DG5F (20-DoF, fully-act.) & RH56F1 (6-DoF, underact.) \\
+Action Space & 26-dim (6 arm + 20 hand) & 12-dim (6 arm + 6 hand) \\
+Observation Space & 1,870-dim & 1,660-dim \\
+Object Scale & 1.0$\times$ (original) & 0.5$\times$ (hand-proportional) \\
+Position Reward Param & $\sigma = 0.2$m & $\sigma = 0.1$m (scaled) \\
+Success Position Tol. & $\sigma_{\text{pos}} = 0.1$m & $\sigma_{\text{pos}} = 0.05$m (scaled) \\
+\hline
+\multicolumn{3}{l}{\textit{Training Protocol and Performance}} \\
+\hline
+Wall-clock Time & $\sim$12 hours & $\sim$8--9 hours (25\% faster) \\
+Step Inference Time & $\sim$5.8 ms/step & $\sim$4.0 ms/step (1.45$\times$ faster) \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Experimental Setup}
+
+The experiments are conducted using a workstation equipped with an Intel Core Ultra 9 285K CPU (24 cores) and a single NVIDIA GeForce RTX 5090 GPU with 32 GB of VRAM, supported by 128 GB of system RAM. Using the Isaac Lab simulation framework \cite{isaaclab}, 4,096 parallel environments can be simulated on the GPU. Combined with a GPU-based vectorized RL implementation RL-Games \cite{rlgames}, this configuration enables efficient distributed learning for dexterous manipulation tasks.
+
+To ensure a fair comparison, the following \textbf{controlled variables} and \textbf{necessary adjustments} are established. Table \ref{tab:training_comparison} summarizes the complete experimental configuration, training protocol, and performance characteristics for both systems.
+
+
+Both systems were trained for identical durations (7,500 epochs, approximately 1.1 billion timesteps) under the same PPO algorithm, network architecture, reward structure, and curriculum learning protocol. The only differences are the hand actuation structure (fully-actuated vs underactuated) and the resulting degrees of freedom, which naturally lead to different action/observation dimensionalities. Object size and position-related reward parameters were scaled proportionally to maintain equivalent geometric difficulty relative to hand size. Interestingly, the Inspire system demonstrated faster wall-clock training time (8--9 hours vs 12 hours) and step inference speed (4.0 ms/step vs 5.8 ms/step) due to its lower DoF, reducing both physics simulation and policy network computation. However, as demonstrated in Section 4.2, this computational efficiency did not translate to better learning performance.
+
+\subsection{Results and Analysis}
+
+\subsubsection{Learning Performance Comparison}
+
+Figure \ref{fig:rewards} presents the total episode reward trajectories for both systems across the entire training duration. The results reveal a dramatic performance gap between the two hand configurations. Figure \ref{fig:rewardsperstep} shows rewards per training step, while Figure \ref{fig:rewardspertime} presents the same data as a function of wall-clock time—both perspectives yield identical conclusions, ruling out computational efficiency as a confounding factor.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth, height=4cm]{total_step_reward.png}
+        \caption{Total episode reward per training step}
+        \label{fig:rewardsperstep}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth, height=4cm]{total_time_reward.png}
+        \caption{Total episode reward per wall-clock time}
+        \label{fig:rewardspertime}
+    \end{subfigure}
+    \caption{Learning curves comparing DG5F (blue) and RH56F1 (red). Both per-step and per-time views show consistent patterns: DG5F successfully learns the manipulation task (total reward $\sim$18--19), while RH56F1 fails to progress beyond initial exploration (total reward $\sim$2).}
+    \label{fig:rewards}
+\end{figure}
+
+The DG5F system (blue curve) demonstrates successful learning with a characteristic three-phase progression. During the initial exploration phase (0--1000 steps, 0--5 hours), the reward gradually increases from near-zero to approximately 5--8 as the agent discovers basic contact and approach strategies. A rapid improvement phase (1000--3000 steps, 5--15 hours) follows, where the reward steeply rises to 15--18, indicating the emergence of successful lifting and positioning behaviors. Finally, the convergence phase (3000--7500 steps, 15--24 hours) shows stable performance at reward 18--19, with minor oscillations reflecting continued exploration under domain randomization.
+
+In contrast, the RH56F1 system (red curve) exhibits learning failure. The reward curve remains nearly flat throughout the entire 7500-epoch training period, plateauing at approximately 2.0 with no discernible improvement trajectory. This indicates that while the underactuated hand learned some basic behaviors (e.g., approaching the object, making finger contact), it failed to discover the critical manipulation strategy required for the lifting task. The absence of any upward trend even after 1.1 billion timesteps suggests a fundamental learning bottleneck rather than mere sample inefficiency.
+
+Critically, both the per-step view (Figure \ref{fig:rewardsperstep}) and per-time view (Figure \ref{fig:rewardspertime}) show identical relative performance, confirming that the RH56F1's 1.45$\times$ faster inference speed (Section 4.1) provides no learning advantage. Despite processing more wall-clock experience in less time, the underactuated hand could not overcome its exploration and expressiveness constraints.
+
+\subsubsection{Qualitative Manipulation Comparison}
+
+To validate the quantitative results from Figure \ref{fig:rewards}, the learned manipulation behaviors are examined through visual inspection of the simulation environment. In the Isaac Lab setup, table color serves as a real-time success indicator: \textbf{green tables} signify successful episode completion (object reached target position and maintained for sufficient duration), while \textbf{red/pink tables} indicate failure (target not achieved, object dropped, or abnormal termination).
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{dg5f_1.png}
+        \caption{DG5F lifting sphere}
+        \label{fig:Dg5f lifting sphere}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{dg5f_2.png}
+        \caption{DG5F lifting cube}
+        \label{fig:Dg5f lifting cube}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{dg5f_3.png}
+        \caption{DG5F lifting cone}
+        \label{fig:Dg5f lifting cone}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{dg5f_4.png}
+        \caption{DG5F lifting capsule}
+        \label{fig:Dg5f lifting capsule}
+    \end{subfigure}
+    \caption{DG5F manipulation behavior after 7500 epochs of training. All subfigures show \textbf{green tables}, indicating consistent success across diverse object geometries. The hand demonstrates proper approach, pre-grasp shaping, enveloping grasp formation, lifting, and goal-directed positioning.}
+    \label{fig:dg5f_lifting}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{inspire_1.png}
+        \caption{RH56F1 lifting sphere}
+        \label{fig:RH56F1 lifting sphere}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{inspire_2.png}
+        \caption{RH56F1 lifting cube}
+        \label{fig:RH56F1 lifting cube}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{inspire_3.png}
+        \caption{RH56F1 lifting cone}
+        \label{fig:RH56F1 lifting cone}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.45\linewidth}
+        \centering
+        % height 파라미터 추가 (원하는 cm 단위 입력, 예: 6cm)
+        \includegraphics[width=\linewidth, height=4cm]{inspire_4.png}
+        \caption{RH56F1 lifting capsule}
+        \label{fig:RH56F1 lifting capsule}
+    \end{subfigure}
+    \caption{RH56F1 manipulation behavior after 7500 epochs of training. Most subfigures show \textbf{red/pink tables}, indicating task failure. Objects remain on the table surface rather than being lifted. The hand makes contact but fails to execute successful grasping and lifting strategies.}
+    \label{fig:inspire_lifting}
+\end{figure}
+
+Figures \ref{fig:dg5f_lifting} and \ref{fig:inspire_lifting} show trained policies manipulating four object types (sphere, cube, cone, capsule). DG5F successfully manipulates all shapes (green tables), demonstrating adaptive grasp configurations from approach through lifting. In contrast, RH56F1 fails across all object types (red/pink tables), with objects remaining on the table surface. While RH56F1 makes contact, it never forms stable grasps—the learned policy maximizes dense approach rewards but fails to discover lifting strategies, confirming the quantitative results.
+
+\subsubsection{Task Success Metrics}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{success.png}
+        \caption{Success reward progression}
+        \label{fig:success}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{position_tracking.png}
+        \caption{Position tracking reward progression}
+        \label{fig:position_tracking}
+    \end{subfigure}
+    \caption{Task success metrics comparing DG5F and RH56F1. Both metrics show complete task failure for the underactuated hand.}
+    \label{fig:task_success}
+\end{figure}
+
+DG5F achieves steadily increasing success reward ($\sim$3.3 by epoch 7500) and position tracking ($\sim$0.9), while RH56F1 remains at zero throughout training, indicating complete failure to learn object lifting despite 1.1 billion timesteps.
+
+\subsubsection{Contact Behavior Analysis}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{fingers_to_object.png}
+        \caption{Fingers-to-object distance reward}
+        \label{fig:fingers_to_object}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{good_finger_contact.png}
+        \caption{Good finger contact reward}
+        \label{fig:good_finger_contact}
+    \end{subfigure}
+    \caption{Contact-related reward metrics revealing distinct learning strategies between the two systems.}
+    \label{fig:contact_metrics}
+\end{figure}
+
+Figure \ref{fig:contact_metrics} reveals a critical paradox: RH56F1 ($\sim$0.67) outperforms DG5F ($\sim$0.52) on fingers-to-object distance, rapidly learning approach behavior within 500 epochs. However, good finger contact remains near-zero for RH56F1 while DG5F reaches $\sim$0.26. This exposes the core failure mode: \textit{RH56F1 learned to approach and touch objects but never progressed to forming stable grasps}, converging to a local optimum that maximizes dense rewards without discovering the grasping primitives required for task success.
+
+\subsubsection{Exploration and Learning Dynamics}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{entropy.png}
+        \caption{Policy entropy over training}
+        \label{fig:entropy}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{critic_loss.png}
+        \caption{Critic loss over training}
+        \label{fig:critic_loss}
+    \end{subfigure}
+    \caption{Exploration and value function learning dynamics reveal fundamental differences in how the two systems learn.}
+    \label{fig:learning_dynamics}
+\end{figure}
+
+Entropy trajectories (Figure \ref{fig:learning_dynamics}) show DG5F maintaining high exploration ($\sim$38 final) with a U-shaped pattern, while RH56F1 plateaus at $\sim$20 (47\% lower), reflecting action space constraints from mechanical coupling. Critic loss patterns are similarly divergent: DG5F exhibits higher loss ($\sim$0.12 converged) from navigating complex manipulation states, while RH56F1's low loss ($\sim$0.06) indicates a simpler value landscape consistent with its restricted approach-and-touch policy.
+
+\subsubsection{Curriculum Progression and Robustness}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\linewidth]{curriculum_adr.png}
+    \caption{ADR curriculum difficulty progression over training, showing the stark robustness gap between fully-actuated and underactuated systems.}
+    \label{fig:curriculum}
+\end{figure}
+
+DG5F rapidly advances curriculum difficulty to $\sim$0.85 by epoch 5000, learning robust policies under diverse randomization. In contrast, RH56F1's curriculum remains at zero throughout training, indicating complete robustness failure—the underactuated hand cannot achieve sufficient success rates even under minimal environmental variation.
+
+
+\section{Conclusion}
+
+\subsection{Discussion}
+
+The results reveal a dramatic performance gap between fully-actuated (DG5F) and underactuated (RH56F1) hands under identical training conditions. DG5F successfully learned object manipulation (total reward 18--19, success $\sim$3.3), while RH56F1 failed to progress beyond basic contact behaviors (total reward $\sim$2.0, zero success) across all metrics.
+
+The critical finding is a \textbf{local optimum trap}: RH56F1 outperformed DG5F on approach behavior (finger-object distance 0.67 vs 0.52) but never discovered grasping strategies, converging to maximize dense rewards without achieving task success. This failure stems from three compounding factors: (1) reduced exploration from mechanical coupling (47\% lower entropy), (2) insufficient expressiveness for complex manipulation primitives requiring fine-grained joint control, and (3) curriculum progression failure preventing robustness development. These findings suggest underactuated hands face fundamental challenges in RL-based learning for tasks requiring precise manipulation beyond adaptive grasping.
+
+\subsection{Limitation}
+
+Several limitations warrant consideration. First, the experimental scope is limited to a single arm-hand configuration per actuation type (UR10e + DG5F/RH56F1); generalization to other platforms remains untested. Second, the analysis focuses on empirical metrics rather than mathematical characterization of actuation differences (e.g., constraint manifolds, grasp stability conditions). Third, while 7500 epochs (1.1B timesteps) proved sufficient for DG5F convergence, longer training might eventually enable RH56F1 success, though the absence of upward trends suggests fundamental bottlenecks rather than sample inefficiency. Fourth, all experiments were conducted in simulation; real-world deployment introduces actuator backlash, sensor noise, and contact modeling errors that may differentially impact actuation types. Fifth, this study exclusively employs PPO; alternative algorithms (e.g., SAC) might exhibit different exploration characteristics. Finally, domain randomization did not include object mass variation, though implementing this fairly across actuation types is nontrivial due to effort/torque scaling differences.
+
+
+
+
+
+
+\newpage
+\begin{thebibliography}{21}
+
+\bibitem{yu2022dexterous}
+Yu, C., Wang, P., Ma, X., and Zhang, Y. (2022).
+Dexterous manipulation for multi-fingered robotic hands: A review.
+\textit{Frontiers in Neurorobotics}, 16, 873802.
+
+\bibitem{rajeswaran2018dexterous}
+A. Rajeswaran et al., ``Learning complex dexterous manipulation with deep reinforcement learning and demonstrations,'' in \textit{Robotics: Science and Systems (RSS)}, 2018.
+
+\bibitem{andrychowicz2020learning}
+Andrychowicz, O. M., Baker, B., Chociej, M., Jozefowicz, R., McGrew, B., Pachocki, J., ... and Zaremba, W. (2020). Learning dexterous in-hand manipulation. The International Journal of Robotics Research, 39(1), 3-20.
+
+\bibitem{openai2019rubiks}
+OpenAI et al., ``Solving Rubik's Cube with a robot hand,'' \textit{arXiv preprint arXiv:1910.07113}, 2019.
+
+\bibitem{petrenko2023dexpbt}
+A. Petrenko et al., ``DexPBT: Scaling up dexterous manipulation for hand-arm systems with population based training,'' in \textit{Robotics: Science and Systems (RSS)}, 2023.
+
+\bibitem{qi2023dexpoint}
+Y. Qi et al., ``DexPoint: Generalizable point cloud reinforcement learning for sim-to-real dexterous manipulation,'' in \textit{Conference on Robot Learning (CoRL)}, 2023.
+
+\bibitem{allegro_hand}
+Wonik Robotics, ``Allegro Hand,'' \url{https://www.wonikrobotics.com/research-robot-hand}.
+
+\bibitem{Tesollo_dg5f}
+Tesollo, ``DG-5F Dexterous Gripper,'' \url{https://en.Tesollo.com/dg-5f/}.
+
+\bibitem{schulman2017ppo}
+J. Schulman, F. Wolski, P. Dhariwal, A. Radford, and O. Klimov, ``Proximal policy optimization algorithms,'' \textit{arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{lopes2025lookahead}
+A. F. G. Lopes, C. Barata, and P. Moreno,
+``Model-Based Lookahead Reinforcement Learning for In-Hand Manipulation,''
+\textit{arXiv preprint arXiv:2510.08884}, 2025.
+
+\bibitem{deimel2013novel}
+Deimel, R., and Brock, O. (2013).
+A novel type of compliant, underactuated robotic hand for dexterous grasping.
+In \textit{Robotics: Science and Systems IX}.
+
+\bibitem{birglen2009underactuated}
+L. Birglen, T. Laliberté, and C. M. Gosselin,
+``Underactuated Robotic Hands,''
+\textit{Springer Tracts in Advanced Robotics}, vol. 40, Springer, 2009.
+
+\bibitem{catalano2014softhand}
+M. G. Catalano et al., ``Adaptive synergies for the design and control of the Pisa/IIT SoftHand,'' \textit{International Journal of Robotics Research (IJRR)}, vol. 33, no. 5, pp. 768--782, 2014.
+
+\bibitem{dollar2011underactuated}
+A. M. Dollar and R. D. Howe,
+``The highly adaptive SDM hand: Design and performance evaluation,''
+\textit{International Journal of Robotics Research}, vol. 29, no. 5, pp. 585--597, 2010.
+
+\bibitem{wang2019truly}
+Y. Wang et al., ``Truly proximal policy optimization,'' in \textit{Conference on Uncertainty in Artificial Intelligence (UAI)}, 2019.
+
+\bibitem{schulman2015trpo}
+J. Schulman, S. Levine, P. Abbeel, M. Jordan, and P. Moritz, ``Trust region policy optimization,'' in \textit{International Conference on Machine Learning (ICML)}, 2015.
+
+\bibitem{rlgames}
+A. Makoviychuk and V. Makoviichuk, ``RL-Games: A high-performance framework for reinforcement learning,'' \url{https://github.com/Denys88/rl_games}, 2021.
+
+\bibitem{sintov2019underactuated}
+A. Sintov, O. Tslil, and A. Shapiro, ``Data-driven modeling and control of an underactuated hand,'' \textit{IEEE Robotics and Automation Letters (RAL)}, vol. 4, no. 3, pp. 2246--2253, 2019.
+
+\bibitem{humanoid_hands}
+Tesla Optimus, Figure 01, and 1X NEO: Commercial humanoid robots with 5-finger hands, 2023-2024.
+
+\bibitem{inspire_rh56f1}
+Inspire Robots, ``RH56F1 Robotic Hand,'' \url{https://en.inspire-robots.com/}.
+
+\bibitem{isaaclab}
+NVIDIA, ``Isaac Lab: A unified and modular framework for robot learning,''
+\url{https://isaac-sim.github.io/IsaacLab/main/index.html}, 2024.
+
+\end{thebibliography}
+
+\end{document}

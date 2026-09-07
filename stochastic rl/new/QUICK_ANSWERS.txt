@@ -1,0 +1,141 @@
+================================================================================
+빠른 답변 모음 (Quick Answers)
+================================================================================
+
+질문 1: Kuka iiwa + Allegro Hand 실험은 어떻게 찾나요?
+================================================================================
+
+답변: identify_experiments.py 스크립트 실행!
+
+실행 방법:
+    cd /home/dyros/IsaacLab
+    python3 identify_experiments.py
+
+결과:
+    📊 EXPERIMENT CLASSIFICATION RESULTS
+
+    🤖 KUKA + ALLEGRO (7 experiments)
+      2025-09-23_18-48-30  →  Kuka iiwa + Allegro Hand
+      2025-10-20_18-00-00  →  Kuka iiwa + Allegro Hand
+      2025-10-20_18-50-01  →  Kuka iiwa + Allegro Hand
+      2025-10-23_13-13-09  →  Kuka iiwa + Allegro Hand
+      2025-10-23_13-44-09  →  Kuka iiwa + Allegro Hand
+      2025-10-23_13-48-25  →  Kuka iiwa + Allegro Hand
+      2025-10-23_13-48-57  →  Kuka iiwa + Allegro Hand
+
+    🤖 HDR + DG5F (6 experiments)
+      2025-10-22_11-24-26  →  HDR + DG5F Hand
+      2025-10-22_18-03-05  →  HDR + DG5F Hand
+      2025-10-22_18-09-58  →  HDR + DG5F Hand
+      2025-10-22_18-23-29  →  HDR + DG5F Hand
+      2025-10-22_20-01-21  →  HDR + DG5F Hand
+      2025-10-22_20-26-49  →  HDR + DG5F Hand
+
+Kuka-Allegro 실험 디렉토리:
+    /home/dyros/IsaacLab/logs/rl_games/reorient/2025-09-23_18-48-30/
+    /home/dyros/IsaacLab/logs/rl_games/reorient/2025-10-20_18-00-00/
+    /home/dyros/IsaacLab/logs/rl_games/reorient/2025-10-20_18-50-01/
+    ... (총 7개)
+
+Tensorboard로 확인:
+    tensorboard --logdir /home/dyros/IsaacLab/logs/rl_games/reorient/2025-09-23_18-48-30/summaries
+
+주요 로그 파일:
+    env.yaml:    환경 설정 (어떤 robot인지 확인)
+    agent.yaml:  PPO 하이퍼파라미터
+    summaries/:  Tensorboard 로그 (학습 곡선, reward 등)
+    nn/:         체크포인트 (.pth 파일)
+
+================================================================================
+질문 2: 물체별 성능 분석이 가능한가요?
+================================================================================
+
+답변: 코드 수정 없이는 **제한적으로만** 가능합니다.
+
+현재 상황:
+    ✅ 가능: 전체 success rate, sample efficiency, stability 비교
+    ❌ 불가능: 물체별 success rate, 물체별 reward 분리
+
+왜 불가능한가:
+    - Isaac Lab + RL-Games는 기본적으로 "전체 평균"만 로깅
+    - 물체 index 정보가 Tensorboard에 기록 안 됨
+    - Environment 내부에만 물체 정보 존재
+
+우리 환경의 물체 (총 16가지):
+    1-6:   Cuboids (큐브) - 6가지 크기
+    7-8:   Spheres (구) - 2가지 크기
+    9-14:  Capsules (캡슐) - 6가지 크기
+    15-16: Cones (원뿔) - 2가지 크기
+
+    * Inspire Hand: 0.5x 스케일
+    * DG5F Hand:    1.0x 스케일 (Kuka-Allegro baseline과 동일)
+
+코드 수정 없이 가능한 분석:
+
+1. 간접적 분석 (Tensorboard):
+    - Success rate variance가 크다 → 물체에 따라 성능 차이 큼
+    - Success rate variance가 작다 → 물체 관계없이 일정
+
+2. 질적 분석 (Play 모드 영상):
+    python scripts/rsl_rl/play.py \
+        --task Isaac-Dexsuite-Ur10e-Inspire-Lift-Play-v0 \
+        --num_envs 1 \
+        --checkpoint logs/.../model_XXXXX.pt
+
+    → 각 물체별로 성공/실패 육안 관찰
+    → "Sphere는 어려워 보이고, Cuboid는 쉬워 보인다" 같은 정성적 파악
+
+논문에 어떻게 쓸 수 있나:
+
+✅ 가능:
+    "We observe that both hands achieve consistent performance across
+     object geometries (low variance in success rate), suggesting that
+     the learning difficulty is dominated by hand actuation structure
+     rather than object shape complexity."
+
+❌ 불가능:
+    "Inspire Hand achieves 80% on spheres vs 90% on cuboids"
+    (정량적 수치 제시 불가)
+
+권장사항:
+
+Main Results:
+    → 전체 성능 비교 (Inspire vs DG5F)
+    → 이것만으로도 충분히 강력한 contribution!
+
+Discussion/Limitation:
+    → 물체별 분석은 안 했다고 명시
+    → 질적 관찰은 언급 가능 (영상 있으면)
+
+Future Work:
+    "Future work should investigate object-stratified performance
+     analysis by logging object indices during training, enabling
+     per-object success rate computation and identification of which
+     geometries benefit from specific actuation structures."
+
+결론:
+    ✅ 전체 성능 비교만으로도 충분히 좋은 논문!
+    ✅ 솔직하게 limitation 인정 → 논문 신뢰도 ↑
+    ✅ Future work 명확히 제시 → 후속 연구 방향 제시
+
+================================================================================
+추가 참고 문서
+================================================================================
+
+Kuka-Allegro 실험 찾기:
+    → identify_experiments.py (이미 생성됨)
+
+물체별 분석 가능성:
+    → /home/dyros/IsaacLab/stochastic rl/new/OBJECT_ANALYSIS_GUIDE.md
+
+논문 작성 가이드:
+    → /home/dyros/IsaacLab/stochastic rl/new/00_README.md
+    → /home/dyros/IsaacLab/stochastic rl/new/01_EXPERIMENTAL_DESIGN.md
+    → /home/dyros/IsaacLab/stochastic rl/new/02_RELATED_WORK.md
+    → /home/dyros/IsaacLab/stochastic rl/new/03_IMPLEMENTATION_DETAILS.md
+    → /home/dyros/IsaacLab/stochastic rl/new/04_CONTRIBUTIONS_AND_CONCLUSION.md
+
+설정 요약:
+    → /home/dyros/IsaacLab/stochastic rl/new/CONFIGURATION_SUMMARY.txt
+
+================================================================================

@@ -38,6 +38,10 @@ from .uh035_inspire_right import *
 from .ur10e_inspire_left import *
 from .ur10e_inspire_right import *
 from .ur10e_dg5f_right import *
+
+# 추가: dual fr3 (fr3_husky)
+from .dual_fr3 import *
+from .dual_fr3_plate_ee import *
 from .uh035_ati_dg5f_L import *
 from .hdr35_20_rh56f1_r_sensor import *
 from .hdr35_20_dg5f_l import *

@@ -14,7 +14,7 @@ random.seed(SEED)
 
 from isaaclab.app import AppLauncher
 
-headless = True
+headless = False
 app_launcher = AppLauncher(headless=headless)
 simulation_app: Any = app_launcher.app
 

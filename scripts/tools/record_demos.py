@@ -219,7 +219,7 @@ def create_environment_config(
     env_cfg.recorders: ActionStateRecorderManagerCfg = ActionStateRecorderManagerCfg()
     env_cfg.recorders.dataset_export_dir_path = output_dir
     env_cfg.recorders.dataset_filename = output_file_name
-    env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_SUCCEEDED_ONLY
+    env_cfg.recorders.dataset_export_mode = DatasetExportMode.EXPORT_ALL
 
     return env_cfg, success_term
 
@@ -400,6 +400,7 @@ def run_simulation_loop(
     current_recorded_demo_count = 0
     success_step_count = 0
     should_reset_recording_instance = False
+    should_save_demo = False
     running_recording_instance = not args_cli.xr
 
     # Callback closures for the teleop device
@@ -418,12 +419,18 @@ def run_simulation_loop(
         running_recording_instance = False
         print("Recording paused")
 
+    def save_demo_manually():
+        nonlocal should_save_demo
+        should_save_demo = True
+        print("[ENTER] Manual save requested")
+
     # Set up teleoperation callbacks
     teleoperation_callbacks = {
         "R": reset_recording_instance,
         "START": start_recording_instance,
         "STOP": stop_recording_instance,
         "RESET": reset_recording_instance,
+        "ENTER": save_demo_manually,
     }
 
     teleop_interface = setup_teleop_device(teleoperation_callbacks)
@@ -458,12 +465,25 @@ def run_simulation_loop(
             else:
                 env.sim.render()
 
-            # Check for success condition
+            # Check for success condition (auto)
             success_step_count, success_reset_needed = process_success_condition(env, success_term, success_step_count)
             if success_reset_needed:
                 should_reset_recording_instance = True
 
-            # Update demo count if it has changed
+            # Manual save via ENTER key
+            if should_save_demo:
+                should_save_demo = False
+                env.recorder_manager.record_pre_reset([0], force_export_or_skip=False)
+                env.recorder_manager.set_success_to_episodes(
+                    [0], torch.tensor([[True]], dtype=torch.bool, device=env.device)
+                )
+                env.recorder_manager.export_episodes([0])
+                current_recorded_demo_count += 1
+                label_text = f"Recorded {current_recorded_demo_count} demonstrations (manual)."
+                print(label_text)
+                should_reset_recording_instance = True
+
+            # Update demo count if it has changed (auto success)
             if env.recorder_manager.exported_successful_episode_count > current_recorded_demo_count:
                 current_recorded_demo_count = env.recorder_manager.exported_successful_episode_count
                 label_text = f"Recorded {current_recorded_demo_count} successful demonstrations."

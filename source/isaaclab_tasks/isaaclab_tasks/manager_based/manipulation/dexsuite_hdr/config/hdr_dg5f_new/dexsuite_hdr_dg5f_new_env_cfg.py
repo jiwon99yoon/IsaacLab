@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-from isaaclab_assets.robots import HDR_DG5F_CFG_NEW
+from isaaclab_assets.robots import HDR20_DG5F_CFG_NEW
 
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -27,7 +27,7 @@ class HdrDg5fNewReorientRewardCfg(dexsuite.RewardsCfg):
     # MODIFIED (HDR-DG5F): weight=3.0 (6x increase to prioritize grasping)
     good_finger_contact = RewTerm(
         func=mdp.contacts,
-        weight=2.0,  # cluade 3.0 추천 -> 2.0으로줄임 # Increased from 0.5 to prioritize multi-finger contact
+        weight=2.0,  # 3.0 -> 2.0으로줄임 # Increased from 0.5 to prioritize multi-finger contact
         params={"threshold": 1.0},
     )
 
@@ -41,7 +41,7 @@ class HdrDg5fNewMixinCfg:
     def __post_init__(self: dexsuite.DexsuiteReorientEnvCfg):
         super().__post_init__()
         self.commands.object_pose.body_name = "rl_dg_palm" #"rl_dg_mount"
-        self.scene.robot = HDR_DG5F_CFG_NEW.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot = HDR20_DG5F_CFG_NEW.replace(prim_path="{ENV_REGEX_NS}/Robot")
         finger_tip_body_list = ["rl_dg_1_4", "rl_dg_2_4", "rl_dg_3_4", "rl_dg_4_4", "rl_dg_5_4"]
         for link_name in finger_tip_body_list:
             setattr(
@@ -57,8 +57,8 @@ class HdrDg5fNewMixinCfg:
             params={"contact_sensor_names": [f"{link}_object_s" for link in finger_tip_body_list]},
             clip=(-20.0, 20.0),  # contact force in finger tips is under 20N normally
         )
-        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["rl_dg_palm", "rl_dg_.*_4"] #".*_tip"]
-        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["rl_dg_palm", "rl_dg_.*_4"]) #".*_tip"])
+        self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"].body_names = ["rl_dg_palm", ".*_tip"] #"rl_dg_.*_4"] #".*_tip"]
+        self.rewards.fingers_to_object.params["asset_cfg"] = SceneEntityCfg("robot", body_names=["rl_dg_palm", ".*_tip"]) #"rl_dg_.*_4"]) #".*_tip"])
 
 
 @configclass

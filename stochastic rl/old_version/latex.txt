@@ -1,0 +1,132 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{cite}
+
+% Compact section spacing
+\titlespacing*{\section}{0pt}{8pt}{4pt}
+\titlespacing*{\subsection}{0pt}{6pt}{3pt}
+\titlespacing*{\subsubsection}{0pt}{4pt}{2pt}
+
+% Compact list spacing
+\setlist{itemsep=2pt, topsep=2pt, parsep=0pt}
+
+\title{\vspace{-1.5cm}\textbf{Motion Planning-Bootstrapped Reinforcement Learning with Contact-Aware Reward Shaping for High-DOF Dexterous Manipulation}}
+\author{[Name]}
+\date{January 2025}
+
+\begin{document}
+
+\maketitle
+
+\section{Motivation}
+
+Deep reinforcement learning (RL) has demonstrated human-level performance in dexterous manipulation tasks \cite{rajeswaran2018learning, andrychowicz2020learning}, but suffers from extreme sample inefficiency. For example, OpenAI Dactyl \cite{andrychowicz2020learning} required 100 years worth of simulation to learn cube rotation. This severely hinders deployment of RL on real robotic systems.
+
+\subsection{Prior Solutions and Research Gap}
+
+Recent works have proposed bootstrapping RL with automatic demonstrations generated from motion planning \cite{abbatematteo2021bootstrapping, bhaskar2024planrl, lian2023reinforcement}. Abbatematteo et al.\ \cite{abbatematteo2021bootstrapping} showed that kinematic planning-based demonstrations outperform random initialization, and PLANRL \cite{bhaskar2024planrl} achieved 90\% success rate on real robots. However, these approaches were limited to robotic arms with simple grippers (6--7 DOF only).
+
+Scaling to high-DOF dexterous hands (20+ DOF) presents three challenges: (1) 3--4$\times$ larger action space making exploration difficult, (2) kinematic planners cannot capture contact dynamics, (3) multi-finger coordination is required but kinematics alone cannot ensure stable grasping. Therefore, this research aims to extend motion planning-bootstrapped RL to high-DOF hands and improve sample efficiency through contact-aware reward shaping.
+
+\section{Problem Description}
+
+This research uses a UR10e robotic arm (6-DOF) combined with two dexterous hands: \textbf{UR10e-DG5F} (26-DOF, fully-actuated 5-finger gripper) and \textbf{UR10e-Inspire} (12-DOF, under-actuated 5-finger gripper). We learn various object lifting tasks and train RL-Games PPO with GPU acceleration (4096 parallel environments) in the Isaac Lab environment.
+
+\subsection{Three-Phase Framework}
+
+\textbf{Phase 1: Automated Demonstration Generation (Isaac Sim + MoveIt2).} We use the MoveIt2 motion planner to plan collision-free trajectories to target poses, execute them in Isaac Sim, and record (state, action) pairs. We generate 1000 demonstrations per robot and convert them to Isaac Lab format.
+
+\textbf{Phase 2: Behavior Cloning Pre-training.} We pre-train a policy on demonstration data using a 3-layer FC network (256-256-128 units). We train for 50 epochs with MSE loss, targeting $>$30\% success rate.
+
+\textbf{Phase 3: RL Fine-tuning + Contact-Aware Rewards.} After initializing with the BC policy, we perform PPO training with contact-specific rewards (5000 epochs). We maintain a demonstration buffer and train with 25\% demo + 75\% RL data.
+
+\subsection{Core Contribution: Contact-Aware Reward Shaping}
+
+To address shortcut behaviors in dexterous manipulation RL (arm pushing, exploiting floor bouncing, etc.), we introduce three contact-specific rewards:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Contact Gating:} Position tracking reward activated only during finger-object contact
+    \begin{equation}
+    R_{\text{gated}} = R_{\text{position}} \times \mathbb{I}(F_{\text{contact}} > 0.1\text{N})
+    \end{equation}
+
+    \item \textbf{Grasp Duration:} Encourage sustained contact across multiple fingers (minimum 10 steps)
+    \begin{equation}
+    R_{\text{duration}} = \frac{1}{N_{\text{fingers}}} \sum_{j} \mathbb{I}(\text{sustained\_contact}_j)
+    \end{equation}
+
+    \item \textbf{Ground Penalty:} Penalize object-floor collisions
+    \begin{equation}
+    R_{\text{ground}} = -0.5 \times \mathbb{I}(F_{\text{object}_z} > 1.0\text{N})
+    \end{equation}
+\end{enumerate}
+
+Total reward:
+\begin{equation}
+R_{\text{total}} = 2.0 \cdot R_{\text{gated}} + 1.0 \cdot R_{\text{duration}} + R_{\text{ground}} + R_{\text{baseline}}
+\end{equation}
+
+\textbf{Key Insight:} Motion planning provides kinematic feasibility while contact rewards provide dynamic stability, complementing each other to enable robust grasping.
+
+\subsection{Experimental Design}
+
+We conduct an ablation study with 4 variants: (1) Pure PPO (baseline), (2) BC + PPO, (3) PPO + Contact, (4) BC + PPO + Contact (full method). We run each variant on 2 robots for a total of 8 experiments, evaluating success rate, sample efficiency (samples needed to reach 80\% success), contact force statistics, and grasp quality. We expect the full method to achieve 2--4$\times$ faster convergence and 80\%+ success rate compared to pure PPO.
+
+\section{Expected Contribution}
+
+\subsection{Theoretical/Algorithmic Contributions}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Scaling to High-DOF Systems:} We extend motion planning-bootstrapped RL \cite{abbatematteo2021bootstrapping} from 7-DOF robotic arms to 26-DOF dexterous hands, validating that sample efficiency gains are maintained in high-dimensional spaces.
+
+    \item \textbf{Kinematic-Dynamic Complementarity:} We demonstrate that combining kinematic planning (collision avoidance, feasibility) with contact rewards (stable grasping, finger coordination) addresses the limitations of each approach individually.
+
+    \item \textbf{Automated Demonstration Pipeline:} We present a fully automated demonstration generation method without human teleoperation (\$10,000+ hardware).
+
+    \item \textbf{Contact-Aware Reward Framework:} We provide systematic reward shaping (contact gating, duration, penalty) for dexterous manipulation.
+\end{enumerate}
+
+\subsection{Practical Contributions and Impact}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Sample Efficiency Improvement:} While pure PPO requires $\sim$100M samples and 24 hours to reach 80\% success, our full method achieves this with 25--50M samples in 6--12 hours, providing 2--4$\times$ faster convergence and 50--75\% training time reduction.
+
+    \item \textbf{Cost Reduction:} Compared to human demonstration collection (\$10,000+ hardware, 8--83 hours of human time) or pure RL (100 years simulation, \$3,500+ electricity), automated demonstration generation (hardware \$0, 1 hour setup, 4--8 hours automated generation) provides substantial savings.
+
+    \item \textbf{Real-World Deployment Validation:} We validate sim-to-real transfer by deploying policies learned on the UR10e-based system to real robots, demonstrating rapid adaptation to novel objects through automatic demonstration generation and fast training in just a few hours.
+
+    \item \textbf{Open-Source Contribution:} We provide a demonstration toolkit, contact-aware reward library, and implementation guide for the Isaac Lab community to accelerate reproducibility and real-world applications.
+\end{enumerate}
+
+In the long term, this research will have scientific impact through: presenting methodologies for improving sample efficiency in high-DOF robot learning, enhancing theoretical understanding of motion planning and RL integration, and providing reward shaping guidelines for contact manipulation tasks. It will also have technological/economic impact through: improving practicality of dexterous manipulation RL, expanding RL applications in robotics, and improving accessibility of RL technology for SMEs.
+
+\begin{thebibliography}{10}
+
+\bibitem{rajeswaran2018learning}
+A.~Rajeswaran et al., ``Learning Complex Dexterous Manipulation with Deep Reinforcement Learning and Demonstrations,'' \emph{Robotics: Science and Systems (RSS)}, 2018.
+
+\bibitem{andrychowicz2020learning}
+M.~Andrychowicz et al., ``Learning dexterous in-hand manipulation,'' \emph{International Journal of Robotics Research (IJRR)}, vol.~39, no.~1, pp.~3--20, 2020.
+
+\bibitem{abbatematteo2021bootstrapping}
+B.~Abbatematteo et al., ``Bootstrapping Motor Skill Learning with Motion Planning,'' \emph{IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)}, 2021. arXiv:2101.04736.
+
+\bibitem{bhaskar2024planrl}
+A.~Bhaskar et al., ``PLANRL: A Motion Planning and Imitation Learning Framework to Bootstrap Reinforcement Learning,'' arXiv:2408.04054, 2024.
+
+\bibitem{lian2023reinforcement}
+S.~Lian et al., ``Reinforcement Learning in Robotic Motion Planning by Combined Experience-based Planning and Self-Imitation Learning,'' \emph{Robotics and Autonomous Systems}, vol.~169, 104904, 2023.
+
+\bibitem{petrenko2023dexpbt}
+A.~Petrenko et al., ``DexPBT: Scaling up Dexterous Manipulation for Hand-Arm Systems with Population Based Training,'' \emph{Robotics: Science and Systems (RSS)}, 2023.
+
+\bibitem{hester2018deep}
+T.~Hester et al., ``Deep Q-learning from Demonstrations,'' \emph{AAAI Conference on Artificial Intelligence}, 2018.
+
+\end{thebibliography}
+
+\end{document}

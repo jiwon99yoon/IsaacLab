@@ -1,0 +1,1193 @@
+==============================================================================
+Dynamics and Control of Robot-Environment Interaction HW_5 Discussion
+학번: 27134, 이름: 윤지원
+==============================================================================
+
+2. Discussion
+
+이 과제는 7자유도 매니퓰레이터에 대한 Task Space Control을 구현하며, 이는
+HW2-HW4에서 사용한 Joint Space Control 패러다임과 근본적으로 다릅니다.
+
+Task Space는 로봇의 End-Effector (EE)의 위치와 방향을 의미하며,
+이 공간에서 직접 제어하면 작업 수행을 위한 보다 직관적이고 효과적인 제어가 가능합니다.
+
+초기 위치:
+- Problem 1: qi1 = [0, 0, 0, -pi/2, 0, pi/2, pi/4]
+- Problem 2: qi2 = [0, -pi/3, 0, -pi/2, 0, pi/6, pi/4]
+
+주요 제어 목표:
+- Problem 1-1: EE를 y0 방향으로 2cm 이동 (step response)
+- Problem 1-2: EE를 y0 방향으로 10cm 이동 (cubic spline trajectory)
+- Problem 2: 속도 제한이 있는 안전한 task space 제어 (0.3 m/s)
+
+새로운 구현 구조 (2단계 접근법):
+- 준비 단계: qi에 도달하기 위한 Joint space PD 제어 (키 3, 6)
+- 실행 단계: 실제 작업을 위한 Task space 제어 (키 4, 5, 7)
+
+
+==============================================================================
+Task Space Control vs Joint Space Control: 근본적 차이점
+==============================================================================
+
+[제어 공간의 차이]
+
+**Joint Space Control (HW2-HW4)**:
+- 제어 변수: q in R^7 (관절 각도)
+- 목표: qd (원하는 관절 각도)
+- 동역학: M(q)q_ddot + C(q,q_dot)q_dot + G(q) = tau
+- 장점: 직접 제어, 특이점 없음
+- 단점: Task space에서 동작 설계가 어려움
+
+**Task Space Control (HW5)**:
+- 제어 변수: x in SE(3) (EE 포즈: 위치 + 방향)
+- 목표: xd (원하는 EE 포즈)
+- 동역학: Lambda(q)x_ddot + mu(q,q_dot) + p(q) = F
+- 장점: Task space에서 직관적 제어, 직접 경로 설계 가능
+- 단점: 특이점 문제, 복잡한 동역학 계산
+
+[Operational Space Dynamics]
+
+Task Space에서의 운동 방정식은 Joint Space와 다른 형태를 가집니다:
+
+Lambda(q)x_ddot + mu(q,q_dot) + p(q) = F
+
+여기서:
+- Lambda(q): Task space inertia matrix = (J M^-1 J^T)^-1
+- mu(q,q_dot): Task space Coriolis/centrifugal forces
+- p(q): Task space gravity forces
+- F: Task space force (제어 입력)
+
+Joint Space 토크와의 관계:
+tau = J^T F
+
+하지만 중복 로봇의 경우 이것은 유일하지 않습니다!
+
+
+---------------------------------------------------------------------------
+새로운 구현: 2단계 제어 구조
+---------------------------------------------------------------------------
+
+원래 과제 명세는 두 단계를 가진 단일 함수를 사용했지만, 이 구현에서는
+더 나은 모듈성과 명확성을 위해 준비와 실행을 별도의 제어 모드로 분리했습니다.
+
+**준비 단계 (키 3, 6)**:
+- 목적: Joint Space 제어를 사용하여 로봇을 초기 구성 qi로 이동
+- 제어기: PD + M + G (HW4_4와 동일)
+- 지속 시간: 사용자 제어 (준비되면 다음 키 누름)
+- 로깅: 비활성화 (준비 중 데이터 기록 안 함)
+- 키 매핑:
+  * 키 3: hw5_prepare_problem1 -> qi1 = [0, 0, 0, -90deg, 0, 90deg, 45deg]
+  * 키 6: hw5_prepare_problem2 -> qi2 = [0, -60deg, 0, -90deg, 0, 30deg, 45deg]
+
+**실행 단계 (키 4, 5, 7)**:
+- 목적: Task Space 제어를 사용하여 실제 작업 수행
+- 제어기: Task Space PD + Lambda + G + Nullspace
+- 로깅: 활성화 (EE 위치 기록: time, x, y, z)
+- 키 매핑:
+  * 키 4: hw5_1_step -> y0 방향 2cm step
+  * 키 5: hw5_1_cubic -> y0 방향 10cm cubic spline
+  * 키 7: hw5_2_velocity_sat -> 속도 제한하며 xd로 이동
+
+**워크플로우 예시**:
+1. HW5-1-1: [2] -> [3] -> [4] 순서로 누름
+2. HW5-1-2: [2] -> [3] -> [5] 순서로 누름
+3. HW5-2:   [2] -> [6] -> [7] 순서로 누름
+
+**이 접근법의 장점**:
+1. 명확한 관심사 분리 (준비 vs 실행)
+2. 타이밍에 대한 사용자 제어 (작업 시작 전 정착 대기 가능)
+3. 깔끔한 로깅 (준비 단계 과도 응답 제외, 작업 실행 데이터만)
+4. 재사용 가능한 준비 단계 (동일한 qi에서 여러 작업 실행 가능)
+5. 더 쉬운 디버깅 (준비와 실행을 독립적으로 테스트 가능)
+
+
+---------------------------------------------------------------------------
+Problem 1-1: 동역학 보상을 포함한 Task Space PD (2cm Step)
+---------------------------------------------------------------------------
+
+**제어 목표**: qi1 = [0, 0, 0, -pi/2, 0, pi/2, pi/4]에서 시작하여
+              EE를 y0 방향으로 2cm step 명령으로 이동
+
+**실행 흐름**:
+1. 키 2 누름 (joint_ctrl_home): 토크 모드 초기 위치로 이동
+2. 키 3 누름 (hw5_prepare_problem1): Joint Space PD+M+G를 사용하여 qi1로 이동
+   - 수렴을 위해 ~1-2초 대기
+   - 이 단계에서는 로깅 없음
+3. 키 4 누름 (hw5_1_step): Task Space에서 2cm step 실행
+   - 로깅 즉시 시작
+   - 기록 내용: time, x_pos, y_pos, z_pos
+
+**제어 법칙** (키 4) - REinteraction-8 기반:
+tau = J^T Lambda F*_0 + N^T tau_0 + G
+
+여기서:
+- F*_0 = kp(xd - x) - kv x_dot (6D task space force, step이므로 xd_dot=0)
+- Lambda = (J M^-1 J^T)^-1 (task space inertia)
+- J_bar = M^-1 J^T Lambda (dynamically consistent generalized inverse)
+- N = I - J^T J_bar^T (nullspace projector)
+- tau_0 = M{kp(qi1-q) - kv q_dot}: qi1을 유지하기 위한 nullspace 제어 입력
+
+**중요**: 이전 버전에서는 mu_task와 p_task를 추가했으나, 이는 과보상 문제를
+일으킵니다. REinteraction-8 (p.16-17, p.25)에 따르면, 저속 운동에서는
+Lambda와 G만 보상하면 됩니다. Coriolis 항은 저속에서 ≈ 0이며,
+중력은 joint space에서 G로 보상됩니다.
+
+**위치 오차**:
+Delta_x = xd - xc (3D, Cartesian 위치 오차)
+
+**방향 오차** (axis-angle 표현):
+delta_Phi = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+여기서 nd, sd, ad는 원하는 방향의 열 벡터,
+nc, sc, ac는 현재 방향의 열 벡터
+
+[이론적 분석]
+
+1) **Task Space Inertia Matrix (Lambda)**:
+
+Joint Space: M(q)q_ddot = tau
+Task Space: x_ddot = J q_ddot + J_dot q_dot
+
+이들을 결합하면:
+x_ddot = J M^-1 tau + J_dot q_dot
+
+Task space force F = (J^T)^+ tau를 사용하면:
+M(q)q_ddot = J_bar^T F (dynamically consistent)
+
+여기서 J_bar = M^-1 J^T Lambda이고 Lambda = (J M^-1 J^T)^-1입니다.
+
+이것이 Task Space의 관성 행렬로, Joint Space의 M(q)에 대응합니다.
+
+**Lambda의 물리적 의미**:
+- EE에 단위 힘 F가 가해질 때 가속도의 역수
+- 구성 의존적: 로봇 자세에 따라 변함
+- 팔이 뻗은 경우: Lambda 증가 (관성 증가)
+- 팔이 접힌 경우: Lambda 감소 (관성 감소)
+
+2) **Dynamically Consistent Generalized Inverse (J_bar)**:
+
+6자유도 작업을 가진 7자유도 로봇의 경우 -> 중복성 존재
+따라서 J의 역행렬은 유일하지 않습니다.
+
+일반 의사 역행렬: J^+ = J^T(J J^T)^-1
+-> 운동학적 일관성만 보장
+
+동역학적으로 일관된 역행렬: J_bar = M^-1 J^T Lambda
+-> 동역학적 일관성 보장
+
+**차이점**:
+tau = J^T F (일반)
+tau = J_bar^T F (dynamically consistent)
+
+J_bar 사용:
+- Nullspace 제어가 작업에 영향 없음
+- 에너지 효율적 토크 분배
+- 작업과 nullspace의 동역학적 분리
+
+3) **Nullspace Projector (N)**:
+
+N = I - J^T J_bar^T = I - J^T Lambda J M^-1
+
+**특성**:
+- N J^T = 0 (nullspace로 투영)
+- N^2 = N (멱등)
+- rank(N) = 7 - 6 = 1 (6자유도 작업을 가진 7자유도의 경우)
+
+**의미**:
+tau = J^T Lambda F*_0 + N tau_0 + G
+      └─── task ───┘   └─nullspace─┘
+
+- Task 제어: J^T Lambda F*_0 -> EE 제어
+- Nullspace 제어: N tau_0 -> 작업에 영향 없이 관절 최적화
+  (예: 특이점 회피, 관절 한계 회피)
+
+4) **올바른 Task Space 제어 법칙 (REinteraction-8)**:
+
+**핵심 질문**: 왜 mu_task와 p_task를 추가하지 않는가?
+
+Task Space 동역학:
+Lambda(q) x_ddot + mu(q,q_dot) + p(q) = F
+
+여기서:
+- mu(q,q_dot) = J M^-1 C q_dot (task space Coriolis)
+- p(q) = J M^-1 G (task space gravity)
+
+**잘못된 접근** (과보상):
+tau = J^T (Lambda F* + mu_task + p_task) + N^T tau_0
+
+이렇게 하면 mu와 p를 이중으로 보상하게 됩니다!
+
+**올바른 접근** (REinteraction-8, p.16-17, p.25):
+tau = J^T Lambda F* + N^T tau_0 + G
+
+**증명** - 왜 이것이 맞는가?:
+
+Joint Space 동역학:
+M q_ddot + C q_dot + G = tau
+
+제어 법칙 대입:
+M q_ddot + C q_dot + G = J^T Lambda F* + N^T tau_0 + G
+
+G 소거:
+M q_ddot + C q_dot = J^T Lambda F* + N^T tau_0
+
+Task space로 변환 (왼쪽에서 J M^-1 곱함):
+J M^-1 M q_ddot + J M^-1 C q_dot = J M^-1 J^T Lambda F* + J M^-1 N^T tau_0
+
+간단히:
+x_ddot + J M^-1 C q_dot = Lambda^-1 Lambda F* + 0
+                        = F*
+
+여기서 J M^-1 N^T = 0 (동역학적 직교성):
+J M^-1 N^T = J M^-1 (I - J_bar J^T)^T
+          = J M^-1 (I - J Lambda J M^-1)
+          = J M^-1 - J M^-1 J Lambda J M^-1
+          = J M^-1 - J M^-1 (J M^-1 J^T)^-1 (J M^-1 J^T)
+          = J M^-1 - J M^-1 = 0 ✓
+
+**저속 운동 가정** (C ≈ 0):
+x_ddot ≈ F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+따라서 Task Space에서 분리된 2차 시스템!
+
+**중요한 통찰**:
+- mu와 p는 J^T를 통해 "자동으로" 변환됩니다
+- 명시적으로 mu_task, p_task를 추가하면 과보상
+- 저속에서 Coriolis는 무시 가능하므로 C ≈ 0
+- 중력은 joint space에서 G로 한 번만 보상
+
+**실험적 검증**:
+- 과보상 버전: 최대 속도 8 m/s, 74cm 진동 발생
+- 올바른 버전: 부드러운 움직임, 예상된 응답
+
+5) **Step vs Cubic Spline 궤적의 차이**:
+
+이 문제에서 step response를 사용하는 이유를 이해하는 것이 중요합니다.
+
+**Step Response (계단 응답)**:
+
+개념:
+- 목표 위치가 순간적으로 변경됨
+- 속도 명령 없음 (xd_dot = 0)
+
+수학적 표현:
+```
+t < t_start:  xd = x_init
+t ≥ t_start:  xd = x_init + [0, 0.02, 0]^T  (순간 점프!)
+              xd_dot = 0
+```
+
+제어 법칙:
+F* = kp(xd - x) - kv x_dot
+
+로봇의 실제 반응:
+- t=0: 오차 = 2cm → 큰 힘 발생 (F* = 400 * 0.02 = 8 N)
+- 로봇이 빠르게 가속
+- 목표 접근 → 오차 감소 → 힘 감소 → 감속
+- 최종적으로 정지
+
+특징:
+✅ 구현 간단 (목표만 설정)
+✅ 제어기 성능 테스트에 이상적 (시스템 분석의 표준)
+❌ 초기 가속도가 매우 큼
+❌ 경로를 예측할 수 없음
+❌ Overshoot 가능 (ζ < 1일 때)
+
+**Cubic Spline (3차 다항식 궤적)**:
+
+개념:
+- 시작에서 목표까지 부드러운 경로 생성
+- 위치, 속도, 가속도가 모두 연속
+
+수학적 표현:
+```
+xd(t) = a0 + a1*τ + a2*τ^2 + a3*τ^3
+xd_dot(t) = a1 + 2*a2*τ + 3*a3*τ^2
+
+여기서 τ = t - t_start
+
+경계 조건:
+xd(0) = x_init,     xd_dot(0) = 0
+xd(T) = x_final,    xd_dot(T) = 0
+```
+
+제어 법칙:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+여기서 xd_dot는 궤적에서 나오는 속도 feedforward!
+
+로봇의 실제 반응:
+- t=0초: 천천히 가속 시작 (xd_dot가 서서히 증가)
+- t=1.5초: 최대 속도 (궤적 중간)
+- t=3초: 천천히 감속하여 정확히 목표 도달 (xd_dot → 0)
+
+특징:
+✅ 부드러운 움직임 (가속도 연속)
+✅ 경로 예측 가능
+✅ 초기 가속도 제한
+✅ Overshoot 거의 없음
+✅ 속도 feedforward로 추종 성능 향상
+❌ 구현이 복잡
+❌ 이동 시간을 미리 정해야 함
+
+**시각적 비교**:
+
+Step Response:
+```
+위치(xd):  _____|‾‾‾‾‾‾‾‾‾‾  (계단 모양)
+           0.5m  0.52m
+
+속도(xd_dot): _______________ (항상 0)
+
+실제 위치(x): _____|⟋‾‾‾‾‾  (exponential 접근)
+실제 속도(ẋ):  _____|∧____   (급상승 후 감소)
+```
+
+Cubic Spline:
+```
+위치(xd):  _____|⟋‾‾‾‾‾‾‾‾  (S자 곡선)
+           0.5m    0.6m
+
+속도(xd_dot): _____|∧_____   (종 모양, 부드러움)
+                  최대
+
+실제 위치(x): xd와 거의 일치 (추종 우수)
+실제 속도(ẋ):  xd_dot와 거의 일치
+```
+
+**추적 오차 분석**:
+
+Step:
+- 큰 초기 오차 (2cm 또는 10cm)
+- 순수 피드백 제어
+- 오차가 클 때 큰 제어 입력
+- 정착 시간: ts ≈ 4.6/ωn = 0.23 sec
+
+Cubic:
+- 작은 추적 오차 (부드러운 궤적 덕분)
+- 피드백 + 속도 feedforward
+- 일정한 제어 입력
+- 정착 시간: T = 3초 (설계된 시간)
+
+**언제 무엇을 사용하나?**:
+
+Step 사용:
+- 빠른 응답 필요
+- 이동 거리 작음 (HW5-1-1: 2cm)
+- 제어기 성능 테스트 (step response는 시스템 분석 표준)
+
+Cubic Spline 사용:
+- 부드러운 움직임 필요
+- 이동 거리 큼 (HW5-1-2: 10cm)
+- 진동/overshoot 방지
+- 실제 로봇 응용 (대부분)
+
+6) **방향 오차 계산 (axis-angle 표현)**:
+
+방향 오차를 표현하는 방법:
+① Quaternion error
+② Rotation matrix error
+③ Axis-angle representation <- 이 과제에서 사용
+
+현재 회전: Rc = [nc | sc | ac]
+원하는 회전: Rd = [nd | sd | ad]
+
+오차 회전: Re = Rd Rc^T
+
+Axis-angle 표현:
+delta_Phi = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+**왜 이 공식인가?**:
+회전 오차의 1차 근사:
+Re ≈ I + [delta_Phi]×
+
+여기서 [delta_Phi]×는 반대칭 행렬:
+      [  0        -delta_Phi_z   delta_Phi_y  ]
+[δΦ]× = [  delta_Phi_z    0       -delta_Phi_x ]
+      [ -delta_Phi_y  delta_Phi_x     0        ]
+
+Re = Rd Rc^T ≈ I + [delta_Phi]×를 풀면:
+delta_Phi = 0.5 * vex(Rd Rc^T - Rc Rd^T)
+          = 0.5 * (nd × nc + sd × sc + ad × ac)
+
+이것은 회전의 axis-angle 오차를 나타냅니다.
+
+**왜 Quaternion이 아닌가?**:
+- Quaternion은 4D 표현 (과도하게 매개변수화됨)
+- Axis-angle은 3D, 직접 제어 가능
+- Jacobian과 명확한 관계
+- 강의 노트에서 사용 (REinteraction-7, p.19-21)
+
+7) **Step 응답 특성**:
+
+kp = 400, kv = 40 (wn = 20 rad/sec, zeta = 1)
+
+y0 방향 2cm step:
+- xd = x_init + [0, 0.02, 0]^T (y0 방향)
+- xd_dot = 0 (정지 목표)
+
+초기 오차: Delta_x = [0, 0.02, 0]^T
+-> F*_0 = 400 * [0, 0.02, 0]^T + 0 = [0, 8, 0]^T N
+
+임계 감쇠 응답:
+- 정착 시간: ts ≈ 4.6/wn = 0.23 sec
+- 오버슈트: 0%
+- 진동 없음
+
+[교육적 의도]
+Task Space Control의 기본 구조를 이해하고 Joint Space와 명확히 구분.
+특히:
+1. Lambda 행렬의 역할 (Task space 관성 보상)
+2. J_bar의 필요성 (동역학적 일관성)
+3. Nullspace 제어 개념
+4. 방향 오차 계산
+
+
+---------------------------------------------------------------------------
+Problem 1-2: 동역학 보상을 포함한 Task Space PD (10cm Cubic)
+---------------------------------------------------------------------------
+
+**제어 목표**: qi1에서 시작하여 EE를 y0 방향으로 10cm
+              cubic spline 궤적으로 이동
+
+**실행 흐름**:
+1. 키 2 누름: 토크 모드 초기 위치로 이동
+2. 키 3 누름: qi1로 이동 (수렴 대기)
+3. 키 5 누름 (hw5_1_cubic): 10cm cubic spline 실행
+   - 로깅 즉시 시작
+   - 지속 시간: 3초
+
+**Problem 1-1과의 차이점**: step 대신 cubic spline 궤적 사용
+
+**Cubic Spline 궤적**:
+xd(t) = a0 + a1*t + a2*t^2 + a3*t^3
+
+경계 조건:
+- xd(t0) = x_init
+- xd(tf) = x_final
+- xd_dot(t0) = 0
+- xd_dot(tf) = 0
+
+4개의 계수 a0, a1, a2, a3 풀이:
+
+a0 = x_init
+a1 = 0
+a2 = 3(x_final - x_init) / T^2
+a3 = -2(x_final - x_init) / T^3
+
+여기서 T = tf - t0 (지속 시간)
+
+속도 프로파일:
+xd_dot(t) = a1 + 2*a2*t + 3*a3*t^2
+          = 6(x_final - x_init)/T^2 * t - 6(x_final - x_init)/T^3 * t^2
+
+가속도 프로파일:
+xd_ddot(t) = 2*a2 + 6*a3*t
+           = 6(x_final - x_init)/T^2 - 12(x_final - x_init)/T^3 * t
+
+[이론적 분석]
+
+1) **Step vs Cubic의 차이**:
+
+자세한 내용은 Problem 1-1의 "5) Step vs Cubic Spline 궤적의 차이" 섹션 참조.
+
+핵심 요약:
+- Step: 순간 점프, xd_dot=0, 큰 초기 오차
+- Cubic: 부드러운 궤적, xd_dot≠0 (feedforward), 작은 추적 오차
+
+2) **Feedforward vs Feedback**:
+
+순수 피드백 제어:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+이상적으로는 피드포워드 추가:
+F* = Lambda xd_ddot + mu + kp(xd - x) + kv(xd_dot - x_dot)
+
+하지만 이 과제는 피드백만 사용합니다.
+Cubic spline은 피드백만으로도 좋은 성능을 위해 충분히 부드럽습니다.
+
+3) **추적 성능**:
+
+원하는 동역학:
+x_ddot = kp(xd - x) + kv(xd_dot - x_dot)
+
+추적 오차: e = xd - x, e_dot = xd_dot - x_dot
+
+오차 동역학:
+e_ddot = xd_ddot - x_ddot
+       = xd_ddot - [kp(xd - x) + kv(xd_dot - x_dot)]
+       = xd_ddot - kp*e - kv*e_dot
+
+재배열:
+e_ddot + kv*e_dot + kp*e = xd_ddot
+
+이것은 강제 입력 xd_ddot를 가진 2차 시스템!
+
+**정상 상태 추적**:
+Cubic spline 종료 후 (t > tf):
+xd_ddot = 0, xd_dot = 0, xd = x_final
+
+-> e_ddot + kv*e_dot + kp*e = 0
+-> e -> 0 (임계 감쇠, zeta = 1)
+
+따라서 결국 x_final에 정확히 도달합니다.
+
+[교육적 의도]
+Step과 cubic 궤적의 차이 이해:
+1. 부드러운 궤적의 중요성
+2. 궤적 추적과 점 대 점 제어의 차이
+3. Task Space에서의 경로 계획
+
+
+---------------------------------------------------------------------------
+Problem 2: 속도 제한 제어기
+---------------------------------------------------------------------------
+
+**제어 목표**: qi2 = [0, -pi/3, 0, -pi/2, 0, pi/6, pi/4]에서 시작하여
+              속도 제한을 존중하며 EE를 목표 위치로 이동
+
+**실행 흐름**:
+1. 키 2 누름: 토크 모드 초기 위치로 이동
+2. 키 6 누름 (hw5_prepare_problem2): qi2로 이동 (수렴 대기)
+3. 키 7 누름 (hw5_2_velocity_sat): 속도 제한 제어 실행
+   - 목표: xd = [0.3, -0.012, 0.52]^T [m]
+   - 속도 제한: xd_dot_max = 0.3 m/s
+   - 로깅 즉시 시작
+
+**안전 제약**:
+||x_dot|| ≤ xd_dot_max = 0.3 m/s (위치만, 방향 제외)
+
+**제어 법칙** (REinteraction-8 기반):
+tau = J^T Lambda F*_0 + N^T tau_0 + G
+
+여기서:
+F*_0 = [F*; M*] (6D task space force/moment)
+F* = kv(xd_dot - x_dot) (위치 제어)
+M* = -kp delta_Phi - kv omega (방향 제어)
+
+여기서 xd_dot는 다음과 같이 계산:
+
+1) 원하는 속도 (제약 없음):
+   xd_dot_unconstrained = (kp/kv) * (xd - x)
+
+2) 속도 제한:
+   if ||xd_dot_unconstrained|| > xd_dot_max:
+       xd_dot = (xd_dot_max / ||xd_dot_unconstrained||) * xd_dot_unconstrained
+   else:
+       xd_dot = xd_dot_unconstrained
+
+3) 제어 힘:
+   F* = kv * (xd_dot - x_dot)
+
+[이론적 분석]
+
+1) **왜 속도 제한을 사용하는가?**:
+
+안전성과 성능 간의 절충:
+- 빠른 응답: 큰 kp -> 큰 원하는 속도 -> 위험
+- 안전성: 속도 제한 -> 느린 응답
+
+속도 제한은 다음을 보장:
+① 안전성: ||x_dot|| ≤ xd_dot_max (항상 만족)
+② 성능: 가능한 한 빨리 목표 도달
+
+2) **수학적 분석**:
+
+일반 PD 제어:
+F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+속도 제한 제어:
+F* = kv(xd_dot - x_dot)
+
+여기서 xd_dot는 제한된 원하는 속도입니다.
+
+**경우 1**: ||xd_dot_unconstrained|| ≤ xd_dot_max (작은 오차)
+xd_dot = (kp/kv)(xd - x)
+F* = kv[(kp/kv)(xd - x) - x_dot]
+   = kp(xd - x) - kv*x_dot
+
+기존 PD와 유사 (xd_dot = 0일 때).
+
+**경우 2**: ||xd_dot_unconstrained|| > xd_dot_max (큰 오차)
+xd_dot = xd_dot_max * direction
+F* = kv(xd_dot_max * direction - x_dot)
+
+이 경우, 위치 오차에 비례하지 않고,
+속도를 xd_dot_max로 제한하도록 제어합니다.
+
+3) **제한 효과**:
+
+제약 없는 원하는 속도:
+xd_dot_unc = (kp/kv)(xd - x) = (400/40)(xd - x) = 10(xd - x)
+
+예: 5cm 오차
+-> xd_dot_unc = 10 * 0.05 = 0.5 m/s
+
+하지만 xd_dot_max = 0.3 m/s이므로:
+-> xd_dot = 0.3 m/s (제한됨)
+
+**속도 프로파일**:
+큰 오차: xd_dot = 0.3 m/s (일정 속도 단계)
+작은 오차: xd_dot = 10 * error (감속 단계)
+
+임계값:
+||xd - x|| = xd_dot_max / (kp/kv) = 0.3 / 10 = 0.03 m = 3cm
+
+따라서:
+- 오차 > 3cm: 일정한 0.3 m/s로 이동
+- 오차 < 3cm: 목표 접근 중 감속
+
+4) **안정성 분석**:
+
+Lyapunov 함수 후보:
+V = 0.5 * kp * ||xd - x||^2
+
+시간 미분:
+V_dot = kp(xd - x)^T(xd_dot - x_dot)
+
+제어 법칙: F* = kv(xd_dot - x_dot)
+동역학: Lambda x_ddot ≈ F*
+
+-> x_ddot ≈ (kv/Lambda)(xd_dot - x_dot)
+
+1차 시스템처럼 동작:
+x_dot -> xd_dot (지수적으로)
+
+따라서:
+- 큰 오차: x_dot -> xd_dot_max -> 목표 접근
+- 작은 오차: xd_dot -> 0 -> 정지
+
+최종적으로 x -> xd (점근적으로 안정)
+
+5) **왜 kv만 사용하는가?**:
+
+일반 PD: F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+속도 제한:
+- kp 항이 있으면 속도 제한 보장이 어려움
+- kv만 사용하면 x_dot의 직접 제어 가능
+- xd_dot 제한이 자동으로 x_dot 제한
+
+**증명**:
+F* = kv(xd_dot - x_dot)
+
+만약 ||x_dot|| > xd_dot_max:
+- ||xd_dot|| ≤ xd_dot_max (제한에 의해)
+- xd_dot - x_dot는 x_dot를 줄이는 방향
+- F*는 감속 방향
+-> ||x_dot|| 감소
+
+따라서 ||x_dot|| ≤ xd_dot_max는 항상 만족됩니다.
+
+6) **실용적 의의**:
+
+로봇 안전 제어의 핵심:
+- 충돌 회피: 속도 제한이 충격력 감소
+- 작업자 안전: 협업 로봇에 필수
+- 표준 준수: ISO 10218 및 기타 로봇 안전 표준
+
+다른 응용:
+- 관절 속도 제한
+- 가속도 제한
+- 힘/토크 제한
+
+[교육적 의도]
+실용적 안전 제약을 고려한 Task Space Control:
+1. 속도 제한의 필요성과 구현
+2. 안전성과 성능 간의 절충
+3. 제약 최적화의 기본 개념
+
+
+---------------------------------------------------------------------------
+이전 과제와의 비교
+---------------------------------------------------------------------------
+
+[제어 패러다임의 진화]
+
+**HW2: Kinematics (Jacobian, CLIK)**
+- 주제: 역기구학
+- 방법: Jacobian 의사 역행렬, CLIK
+- 한계: 속도 제어만, 동역학 무시
+- 핵심: x_dot = J*q_dot -> q_dot = J^+*xd_dot
+
+**HW3: Kinematics + Nullspace**
+- 주제: 중복성 해소
+- 방법: CLIK + nullspace 제어
+- 개선: 부차 작업 수행 가능
+- 핵심: q_dot = J^+*xd_dot + (I - J^+*J)*q0_dot
+
+**HW4: Joint Space Dynamics**
+- 주제: Joint space 토크 제어
+- 방법: PD + M + G 보상
+- 개선: 정확한 동역학 제어
+- 핵심: tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+- 결과: q_ddot ≈ kp(qd-q) + kv(qd_dot-q_dot)
+
+**HW5: Task Space Dynamics** <- 이 과제
+- 주제: Task space 힘 제어
+- 방법: PD + Lambda + G 보상 + nullspace
+- 개선: Task space에서 직접 제어
+- 핵심: tau = J^T*Lambda*F* + N*tau_0 + G
+- 결과: x_ddot ≈ kp(xd-x) + kv(xd_dot-x_dot)
+
+[핵심 개념 비교 표]
+
++----------+--------------+--------------+--------------+--------------+
+|  항목    |     HW2      |     HW3      |     HW4      |     HW5      |
++----------+--------------+--------------+--------------+--------------+
+| 제어     |  속도        |  속도        |   토크       |   토크       |
+| 입력     |   (q_dot)    |   (q_dot)    |    (tau)     |    (tau)     |
++----------+--------------+--------------+--------------+--------------+
+| 제어     | Joint Space  | Joint Space  | Joint Space  | Task Space   |
+| 공간     | (q, q_dot)   | (q, q_dot)   | (q, q_dot)   | (x, x_dot)   |
++----------+--------------+--------------+--------------+--------------+
+| 동역학   |   무시       |   무시       | M, G 보상    | Lambda, G    |
+| 보상     |              |              |              | 보상         |
++----------+--------------+--------------+--------------+--------------+
+| Null-    |      X       |      O       |      X       |      O       |
+| space    |              | (운동학적)   |              |  (동역학적)  |
++----------+--------------+--------------+--------------+--------------+
+|  핵심    | J^+ = J^T    | (I-J^+J)     | M matrix     | Lambda       |
+| 개념     | (JJ^T)^-1    | q0_dot       |              | J_bar=       |
+|          |              |              |              | M^-1 J^T     |
+|          |              |              |              | Lambda       |
++----------+--------------+--------------+--------------+--------------+
+| 장점     | 간단, 빠름   | 중복성       | 정확한       | Task space   |
+|          |              | 활용         | 관절 제어    | 직접 제어    |
++----------+--------------+--------------+--------------+--------------+
+| 단점     | 동역학 없음  | 동역학 없음  | 간접적       | 복잡한       |
+|          |              |              | 작업 제어    | 계산,        |
+|          |              |              |              | 특이점       |
++----------+--------------+--------------+--------------+--------------+
+
+[의사 역행렬 vs 동역학적으로 일관된 역행렬]
+
+이것이 HW3와 HW5의 가장 큰 차이!
+
+**HW3: 운동학적 의사 역행렬**
+J^+ = J^T(J*J^T)^-1
+
+Nullspace: Nk = I - J^+*J
+
+q_dot = J^+*xd_dot + Nk*q0_dot
+
+**문제점**:
+- Nullspace 제어가 작업에 영향
+- 에너지 비효율
+- 동역학 무시
+
+**HW5: 동역학적으로 일관된 역행렬**
+J_bar = M^-1*J^T*Lambda = M^-1*J^T*(J*M^-1*J^T)^-1
+
+Nullspace: Nd = I - J^T*J_bar^T = I - J^T*Lambda*J*M^-1
+
+tau = J_bar^T*F + Nd*tau_0
+
+**장점**:
+① 동역학적 분리: Nd*J^T = 0
+   -> Nullspace 제어가 작업에 영향 없음
+
+② 에너지 최적: 운동 에너지 최소화
+   KE = 0.5*q_dot^T*M*q_dot
+
+③ 관성 가중: M 행렬로 가중
+   -> 무거운 관절이 덜 움직임
+
+**증명** (동역학적 분리):
+Nd*J^T = (I - J^T*J_bar^T)*J^T
+       = J^T - J^T*J_bar^T*J^T
+       = J^T - J^T*(Lambda*J*M^-1)*J^T
+       = J^T - J^T*Lambda*(J*M^-1*J^T)
+       = J^T - J^T*Lambda*Lambda^-1
+       = J^T - J^T
+       = 0 ✓
+
+이것은 HW3의 운동학적 nullspace로는 불가능!
+
+[중력 보상의 역할]
+
+**HW4의 G**:
+tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+
+M*q_ddot + C*q_dot + G = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+-> M*q_ddot + C*q_dot = M{kp(qd-q) + kv(qd_dot-q_dot)}
+
+G가 중력을 상쇄하여 정상 상태 오차 제거.
+
+**HW5의 G**:
+tau = J^T*Lambda*F* + N*tau_0 + G
+
+M*q_ddot + C*q_dot + G = J^T*Lambda*F* + N*tau_0 + G
+-> M*q_ddot + C*q_dot = J^T*Lambda*F*
+
+왼쪽에서 J*M^-1 곱함:
+J*M^-1*M*q_ddot + J*M^-1*C*q_dot = J*M^-1*J^T*Lambda*F*
+x_ddot + J*M^-1*C*q_dot = Lambda^-1*Lambda*F* = F*
+
+저속의 경우 (C ≈ 0):
+-> x_ddot ≈ F* = kp(xd-x) + kv(xd_dot-x_dot)
+
+유사하게 G가 중력을 상쇄하지만, 다른 공간에서:
+- HW4: G가 관절 공간에서 상쇄
+- HW5: G가 관절 공간에서 상쇄 -> 효과가 작업 공간에 나타남
+
+[2단계 제어 이론적 근거]
+
+**왜 준비 단계가 필요한가?**
+
+Problem 1과 2 모두:
+- 단계 1: qi에 도달하기 위한 Joint space 제어
+- 단계 2: Task space 제어
+
+**이유**:
+① 일관된 초기 구성
+   - 모든 실험을 동일한 초기 자세에서 시작
+   - 공정한 비교 가능
+
+② 특이점 회피
+   - 임의의 자세에서 시작하면 특이점 만날 수 있음
+   - qi는 특이점에서 멀리 선택됨
+
+③ Task space 제어 검증
+   - 단계 1: HW4_4 알고리즘 사용 (이미 검증됨)
+   - 단계 2: 순수하게 HW5 기법 평가
+
+④ 실용적 관련성
+   - 실제 로봇: 홈 위치 -> 작업 구성 -> 작업
+   - 동일한 절차 반영
+
+**왜 HW4_4를 사용하는가?**
+HW4_4 = PD + M + G (동역학 보상)
+- 최고 성능 (0.23 sec 정착)
+- 오버슈트 없음
+- 빠르고 정확한 qi 수렴
+
+**새로운 구현의 장점**:
+별도의 제어 모드로 분리 (준비는 키 3&6, 실행은 키 4,5,7)하여
+시간 기반 단계 전환을 가진 단일 함수에 비해 더 나은 모듈성과 사용자 제어 제공.
+
+
+---------------------------------------------------------------------------
+구현 과정 및 디버깅: 제어 법칙 오류 수정
+---------------------------------------------------------------------------
+
+[초기 구현 문제]
+
+**증상**:
+- 키 3→4 실행 시 로봇이 튀는 현상 (erratic motion) 발생
+- 최대 속도: 8 m/s (예상: ~0.2 m/s)
+- Y 위치 진동: 74cm (예상: 2cm step)
+- 불안정한 움직임
+
+**초기 가설**:
+- Gain이 너무 큼? (kp = 400, kv = 40)
+- Static 변수 초기화 문제?
+
+**디버깅 과정**:
+
+1) **첫 번째 발견**: Static 변수 문제
+   - is_mode_changed_ 플래그가 함수 호출 전에 false로 리셋됨
+   - 결과: x_start, start_time 등이 초기화되지 않음
+   - 해결: Static 변수 제거, 클래스 멤버 변수 사용 (x_init_, control_start_time_)
+
+2) **여전히 문제 지속**:
+   - Static 변수 문제 해결 후에도 튀는 현상 계속 발생
+   - REinteraction-8.pdf 검토 요청
+
+3) **근본 원인 발견**: 제어 법칙 과보상
+
+**잘못된 구현**:
+```cpp
+// Task space Coriolis와 gravity 계산
+VectorXd mu_task = J_ * M_inv * c_;  // Task space Coriolis
+VectorXd p_task = J_ * M_inv * g_;   // Task space gravity
+
+// 보상된 task space force
+VectorXd F_compensated = Lambda * F_star_0 + mu_task + p_task;
+
+// 최종 토크
+tau_desired_ = J_.transpose() * F_compensated + N.transpose() * tau_0;
+```
+
+**문제점**:
+- mu_task = J M^-1 C를 명시적으로 추가
+- p_task = J M^-1 G를 명시적으로 추가
+- 하지만 이들은 이미 joint space에서 처리됨!
+- 결과: **이중 보상** (double compensation)
+
+**수학적 분석**:
+
+Joint space 동역학:
+M q_ddot + C q_dot + G = tau
+
+잘못된 제어 대입:
+M q_ddot + C q_dot + G = J^T (Lambda F* + mu + p) + N^T tau_0
+
+여기서 mu = J M^-1 C, p = J M^-1 G를 대입:
+M q_ddot + C q_dot + G = J^T Lambda F* + J^T J M^-1 C + J^T J M^-1 G + N^T tau_0
+
+문제: C와 G가 두 번 나타남!
+1. 좌변에 한 번 (실제 동역학)
+2. 우변에 한 번 (제어 입력)
+
+이는 상쇄가 아니라 **과보상**입니다.
+
+**올바른 구현** (REinteraction-8, p.16-17, p.25):
+```cpp
+// 최종 토크: tau = J^T Lambda F* + N^T tau_0 + G
+// 저속 운동에서 Coriolis ≈ 0이므로 Lambda와 G만 보상
+tau_desired_ = J_.transpose() * (Lambda * F_star_0) +
+               N.transpose() * tau_0 +
+               g_;
+```
+
+**왜 이것이 맞는가?**:
+
+Joint space 동역학:
+M q_ddot + C q_dot + G = J^T Lambda F* + N^T tau_0 + G
+
+G 소거:
+M q_ddot + C q_dot = J^T Lambda F* + N^T tau_0
+
+Task space로 변환 (왼쪽에서 J M^-1 곱함):
+J M^-1 M q_ddot + J M^-1 C q_dot = J M^-1 J^T Lambda F* + 0
+x_ddot + J M^-1 C q_dot = F*
+
+저속 운동 (C ≈ 0):
+x_ddot ≈ F* = kp(xd - x) + kv(xd_dot - x_dot)
+
+완벽한 분리!
+
+**핵심 통찰**:
+- Task space의 mu와 p는 J^T를 통해 "자동으로" 변환됨
+- 명시적으로 추가하면 과보상
+- Joint space에서 G 한 번만 보상하면 충분
+- 저속에서 Coriolis는 무시 가능
+
+**수정 사항**:
+- HW5_1_step(): 라인 1720-1741 수정
+- HW5_1_cubic(): 라인 1837-1846 수정
+- HW5_2_velocity_sat(): 라인 1945-1954 수정
+
+모든 함수에서 mu_task, p_task 계산 제거하고
+간단한 형태로 변경: tau = J^T Lambda F* + N^T tau_0 + G
+
+**결과**:
+✅ 부드러운 움직임
+✅ 예상된 속도 (최대 ~0.2 m/s for 2cm step)
+✅ 정확한 위치 제어
+✅ 안정적인 동작
+
+[교훈]
+
+1. **이론적 기초의 중요성**:
+   - 직관적으로 "task space에서도 보상해야 한다"고 생각했지만 틀렸음
+   - REinteraction-8을 정확히 따라야 함
+   - 수학적 유도가 중요
+
+2. **과보상의 위험**:
+   - "더 많은 보상 = 더 좋은 성능"이 아님
+   - 이중 보상은 불안정성 초래
+   - 각 항의 역할을 정확히 이해해야 함
+
+3. **저속 운동 가정**:
+   - C ≈ 0은 타당한 가정
+   - Task space control의 단순화를 가능하게 함
+   - 고속에서는 Coriolis 보상 필요할 수 있음
+
+4. **디버깅 프로세스**:
+   - 증상 관찰 (튀는 현상, 높은 속도)
+   - 가설 수립 (gain 문제, static 변수 문제)
+   - 이론 검토 (REinteraction-8 참조)
+   - 근본 원인 식별 (과보상)
+   - 수정 및 검증
+
+---------------------------------------------------------------------------
+전체 비교 및 결론
+---------------------------------------------------------------------------
+
+[HW5의 핵심 기여]
+
+1. **제어 공간 전환**: Joint Space -> Task Space
+   - 직관적 제어: "EE를 10cm 이동"
+   - 쉬운 경로 계획: Cartesian 공간 궤적
+   - 작업 지향 제어
+
+2. **Operational Space Dynamics**:
+   - Lambda = (J*M^-1*J^T)^-1: Task space 관성
+   - J_bar = M^-1*J^T*Lambda: 동역학적으로 일관된 역행렬
+   - 동역학적 분리: 작업과 nullspace의 완전 분리
+
+3. **중복성 활용**:
+   - 주요 작업: EE 위치/방향 제어
+   - 부차 작업: Nullspace 제어 (향후 확장 가능)
+   - N = I - J^T*J_bar^T: 동역학적 nullspace 투영자
+
+4. **안전 제약**:
+   - 속도 제한 (Problem 2)
+   - 충돌 회피, 작업자 안전
+   - 제약 최적화의 기초
+
+[과제 시리즈 전체 흐름]
+
+HW2 -> HW3 -> HW4 -> HW5는 다음 학습 경로를 따름:
+
+**레벨 1: Kinematics** (HW2)
+- Jacobian, 의사 역행렬
+- 속도 제어만
+- 동역학 무시
+
+**레벨 2: Kinematic Redundancy** (HW3)
+- Nullspace 제어
+- 중복성 활용
+- 여전히 동역학 무시
+
+**레벨 3: Joint Space Dynamics** (HW4)
+- M, G 보상
+- 정확한 토크 제어
+- Joint space에 제한
+
+**레벨 4: Task Space Dynamics** (HW5) <- 최종 단계
+- Lambda, G 보상
+- 동역학적 nullspace
+- 직접 task space 제어
+- 안전 제약 고려
+
+[비교 표: Joint Space vs Task Space Control]
+
++--------------+---------------------+---------------------+
+|    항목      | Joint Space (HW4)   | Task Space (HW5)    |
++--------------+---------------------+---------------------+
+| 목표         | qd (관절 각도)      | xd (EE 포즈)        |
++--------------+---------------------+---------------------+
+| 오차         | e = qd - q          | e = xd - x, delta   |
+|              |                     | Phi                 |
++--------------+---------------------+---------------------+
+| 관성         | M(q) in R^(7x7)     | Lambda(q) in        |
+|              |                     | R^(6x6)             |
++--------------+---------------------+---------------------+
+| 제어 법칙    | tau = M{kp(qd-q)    | tau = J^T*Lambda    |
+|              | + kv(qd_dot-q_dot)} | {kp(xd-x) +         |
+|              | + G                 | kv(xd_dot-x_dot)}   |
+|              |                     | + N*tau_0 + G       |
++--------------+---------------------+---------------------+
+| 폐루프       | q_ddot ≈ kp(qd-q)   | x_ddot ≈ kp(xd-x)   |
+| 동역학       | + kv(qd_dot-q_dot)  | + kv(xd_dot-x_dot)  |
++--------------+---------------------+---------------------+
+| Nullspace    | 없음                | N = I - J^T*J_bar^T |
++--------------+---------------------+---------------------+
+| 장점         | ① 직접 제어         | ① 직관적 제어       |
+|              | ② 특이점 없음       | ② 쉬운 경로 계획    |
+|              | ③ 간단한 계산       | ③ Nullspace 사용    |
++--------------+---------------------+---------------------+
+| 단점         | ① 간접적 작업       | ① 특이점            |
+|              | ② 어려운 경로 계획  | ② 복잡한 계산       |
+|              | ③ Nullspace 없음    | ③ 간접적 제어       |
++--------------+---------------------+---------------------+
+| 응용         | ① 점 대 점          | ① 조립              |
+|              | ② 관절 조정         | ② 용접              |
+|              | ③ 특이점 없는       | ③ 경로 추종         |
+|              | 동작                | ④ 힘 제어           |
++--------------+---------------------+---------------------+
+
+[어떤 제어를 사용해야 하는가?]
+
+**Joint Space Control 선호 (HW4)**:
+- 점 대 점 동작 (경로 무관)
+- 관절 한계 회피가 중요
+- 제한된 계산 자원
+- 특이점 근처 작업
+
+**Task Space Control 선호 (HW5)**:
+- 정확한 Cartesian 경로 필요
+- 조립, 용접, 도장 작업
+- 힘 제어와 결합
+- Nullspace 최적화 필요 (예: 장애물 회피)
+
+실제로는 **하이브리드 제어**가 자주 사용됨:
+- 거친 동작: Joint space
+- 정밀 동작: Task space
+- 힘 제어: Task space
+- 중복성 해소: Nullspace
+
+[HW5 실용적 확장]
+
+이 과제의 기본 개념은 다음으로 확장될 수 있음:
+
+1. **하이브리드 위치/힘 제어**:
+   tau = J^T*Lambda[Sf*Ff + Sp*Fp] + N*tau_0 + G
+   - Sf: 힘 선택 행렬
+   - Sp: 위치 선택 행렬
+   - 예: 일정한 힘을 가하며 표면을 따라 이동
+
+2. **임피던스 제어**:
+   F = Md(xd_ddot - x_ddot) + Bd(xd_dot - x_dot) + Kd(xd - x)
+   - 원하는 기계적 임피던스 구현
+   - 인간-로봇 상호작용
+
+3. **적응 Task Space Control**:
+   Lambda_hat 추정 (실제 Lambda를 모를 때)
+   - 파라미터 적응
+   - 강건 제어
+
+4. **다중 작업 제어**:
+   tau = Sum_i J_i^T * Lambda_i * F_i + N_12...n * tau_0 + G
+   - 작업 계층
+   - 우선순위 기반 제어
+
+[최종 결론]
+
+HW5 Task Space Control은 로봇 제어의 핵심 기법:
+
+**이론적 의의**:
+1. Operational space dynamics 이해
+2. 동역학적으로 일관된 역행렬의 필요성
+3. 동역학적 nullspace 개념
+4. 작업 지향 제어의 수학적 기초
+
+**실용적 의의**:
+1. 직관적 제어 (Cartesian 공간)
+2. 쉬운 경로 계획
+3. 안전 제약 통합 (속도 제한)
+4. 효과적인 중복성 활용
+
+**HW4와의 관계**:
+- HW4: Joint space에서 "어떻게" 움직일지 제어
+- HW5: Task space에서 "무엇을" 할지 제어
+- 상호 보완적: 상황에 따라 선택적 사용
+
+**핵심 방정식 요약**:
+
+Joint Space Dynamics (HW4):
+M(q)*q_ddot + C(q,q_dot)*q_dot + G(q) = tau
+tau = M{kp(qd-q) + kv(qd_dot-q_dot)} + G
+-> q_ddot ≈ kp(qd-q) + kv(qd_dot-q_dot)
+
+Task Space Dynamics (HW5):
+Lambda(q)*x_ddot + mu(q,q_dot) + p(q) = F
+
+**제어 법칙** (REinteraction-8):
+tau = J^T Lambda F* + N^T tau_0 + G
+
+여기서:
+F* = kp(xd-x) + kv(xd_dot-x_dot) (6D: 위치 + 방향)
+
+**결과**:
+x_ddot ≈ kp(xd-x) + kv(xd_dot-x_dot) (저속, C ≈ 0)
+
+**핵심 행렬**:
+- Lambda = (J M^-1 J^T)^-1 (task space inertia)
+- J_bar = M^-1 J^T Lambda (dynamically consistent inverse)
+- N = I - J^T J_bar^T (dynamic nullspace projector)
+- delta_Phi = 0.5(nd×nc + sd×sc + ad×ac) (axis-angle orientation error)
+
+**주의**: mu_task, p_task를 명시적으로 추가하지 말 것! (과보상 발생)
+
+이 과제를 통해 Joint Space와 Task Space의 차이를 명확히 이해하고,
+각각의 장단점을 파악하며, 실제 로봇 제어 시스템을 설계하는 데
+필요한 기초를 확립합니다.
+
+
+==============================================================================
+Discussion 끝
+==============================================================================

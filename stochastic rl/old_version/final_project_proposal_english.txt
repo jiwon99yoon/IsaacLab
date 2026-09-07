@@ -1,0 +1,330 @@
+================================================================================
+FINAL PROJECT PROPOSAL
+Stochastic Control and Reinforcement Learning Course
+================================================================================
+
+Title: Motion Planning-Bootstrapped Reinforcement Learning with Contact-Aware
+       Rewards for High-DOF Dexterous Manipulation
+
+Author: [Your Name]
+Date: January 2025
+
+================================================================================
+1. MOTIVATION
+================================================================================
+
+Deep reinforcement learning (RL) has achieved remarkable success in dexterous
+manipulation tasks, demonstrating human-level performance on complex in-hand
+object reorientation [1,2]. However, these approaches suffer from extreme
+sample inefficiency, often requiring hundreds of millions of environment
+interactions before reaching reasonable performance. This limitation severely
+hinders the deployment of RL in real-world robotic systems where data
+collection is expensive and time-consuming.
+
+Recent work has demonstrated that motion planning can be used to bootstrap RL
+by generating kinematically feasible demonstrations automatically [3,4,5].
+Abbatematteo et al. [3] showed that motion planning-based initialization
+significantly outperforms random initialization and is competitive with human
+demonstrations for robotic arm manipulation. PLANRL [4] extended this approach
+with dynamic mode switching between classical planning and RL. However, these
+prior works have exclusively focused on robotic arms (6-7 DOF) with simple
+parallel-jaw grippers, leaving a critical gap in applying this methodology to
+high-DOF dexterous hands (20+ DOF) for contact-rich manipulation tasks.
+
+The challenge of extending motion planning-bootstrapped RL to dexterous hands
+stems from three key factors:
+
+1) High-dimensional action space (20+ DOF vs 7 DOF in prior work)
+2) Contact-rich dynamics that kinematic planners cannot capture
+3) Multi-finger coordination requirements absent in simple grippers
+
+We propose to bridge this gap by extending motion planning-bootstrapped RL to
+high-DOF dexterous hands (26-DOF and 12-DOF) with novel contact-aware reward
+shaping mechanisms. Our approach generates demonstrations via MoveIt2 motion
+planner in Isaac Sim, then transfers them to Isaac Lab for GPU-accelerated RL
+training with contact-specific rewards.
+
+================================================================================
+2. LITERATURE REVIEW
+================================================================================
+
+2.1 Motion Planning-Bootstrapped Reinforcement Learning
+-------------------------------------------------------
+Abbatematteo et al. [3] first demonstrated that kinematic motion planning can
+generate demonstrations to bootstrap RL without human input. They evaluated
+three manipulation tasks (drawer opening, microwave closing, t-ball) with a
+7-DOF KUKA arm in PyBullet, showing that motion planner initialization was
+competitive with human demonstrations and significantly outperformed random
+initialization.
+
+PLANRL [4] recently extended this approach with a framework that dynamically
+switches between classical motion planning (for reaching waypoints) and RL
+(for fine-grained manipulation). They achieved 90% success rate on simple
+real-world tasks with a UR3e arm and Robotiq parallel-jaw gripper.
+
+SILP+ [5] proposed self-imitation learning where a motion planner generates
+demonstrations from successful RL states, achieving 90% success on UR5e arm
+motion planning tasks.
+
+**Gap in Prior Work:** All prior motion planning-bootstrapped RL approaches
+have been limited to robotic arms (6-7 DOF) with simple grippers. No prior
+work has applied this methodology to high-DOF dexterous hands (20+ DOF) for
+contact-rich manipulation.
+
+2.2 Dexterous Manipulation with Deep RL
+---------------------------------------
+Rajeswaran et al. [1] demonstrated learning complex dexterous manipulation
+with a 24-DOF Shadow Hand using human demonstrations and RL (DAPG algorithm).
+OpenAI's Dactyl [2] achieved vision-based cube reorientation through pure RL
+with domain randomization. DexPBT [6] scaled dexterous manipulation using
+population-based training with Kuka+Allegro (7+16 DOF).
+
+**Gap in Prior Work:** While these works successfully learned dexterous
+manipulation, they relied on human demonstrations [1] or massive computational
+resources (100 years of simulation [2]). None leveraged automated motion
+planning for demonstration generation.
+
+2.3 Reward Shaping for Contact-Rich Tasks
+-----------------------------------------
+Prior work on dexterous manipulation [1,2,6] identified challenges with
+shortcut behaviors (e.g., pushing objects with arms instead of grasping).
+Contact-aware reward mechanisms have been proposed [7,8] but not systematically
+evaluated in the context of motion planning-bootstrapped RL.
+
+================================================================================
+3. MAIN IDEAS AND NOVELTY
+================================================================================
+
+3.1 Extension to High-DOF Dexterous Hands
+-----------------------------------------
+We extend motion planning-bootstrapped RL [3] to high-DOF dexterous hands:
+
+- HDR20-DG5F: 26-DOF (6-DOF industrial arm + 20-DOF fully-actuated 5-finger)
+- UH035-Inspire: 12-DOF (6-DOF industrial arm + 6-DOF under-actuated 5-finger)
+
+**Why This Is Non-Trivial:**
+1) Action space dimensionality increases 4× (7 DOF → 26 DOF)
+2) Contact dynamics become critical (multi-finger grasping vs arm reaching)
+3) Kinematic planning alone insufficient (must coordinate 5 fingers)
+
+3.2 Automated Demonstration Generation Pipeline
+----------------------------------------------
+Following [3], we generate demonstrations automatically via MoveIt2:
+
+Phase 1 (Isaac Sim + MoveIt2):
+1. User specifies target object pose via GUI (mouse click)
+2. MoveIt2 plans collision-free trajectory using RRT-Connect
+3. Execute trajectory in Isaac Sim to validate kinematic feasibility
+4. Export successful demonstrations: (state, action, reward, next_state)
+
+Phase 2 (Isaac Lab):
+5. Import demonstrations into Isaac Lab (4096 parallel environments)
+6. Pre-train policy via behavior cloning (50 epochs)
+7. RL fine-tuning with demonstration buffer + contact-aware rewards
+
+3.3 Contact-Aware Reward Shaping (Novel Contribution)
+----------------------------------------------------
+We introduce three contact-specific reward terms to address shortcut behaviors:
+
+1) Contact Gating: Position/orientation tracking rewards activate only when
+   finger-object contact detected (prevents arm-pushing shortcuts)
+
+   R_pos_gated = R_pos × I(contact_force > threshold)
+
+2) Grasp Duration: Rewards sustained multi-finger contact (prevents momentary
+   tapping)
+
+   R_grasp_duration = w × I(contact_duration > min_steps)
+
+3) Ground Contact Penalty: Penalizes object-table collisions (prevents
+   bouncing exploits)
+
+   R_ground_penalty = -w × I(object_table_contact)
+
+**Key Insight:** Motion planning provides kinematically feasible initialization,
+but contact-aware rewards guide RL to discover stable grasping strategies that
+planners cannot capture.
+
+3.4 Novelty vs Prior Work
+-------------------------
+Our approach differs from prior motion planning-bootstrapped RL in three ways:
+
+1) **Robot Embodiment:** High-DOF dexterous hands (26/12 DOF) vs robotic arms
+   (7 DOF) [3,4,5]
+
+2) **Task Complexity:** Contact-rich multi-finger grasping vs free-space
+   reaching or simple gripper tasks [3,4,5]
+
+3) **Reward Design:** Contact-aware reward shaping tailored for dexterous
+   manipulation vs standard position/orientation tracking [3,4,5]
+
+4) **Framework:** Isaac Lab GPU-accelerated parallel simulation (4096 envs)
+   vs PyBullet single-threaded [3] or real robot [5]
+
+5) **Comparison Study:** Under-actuated vs fully-actuated hands (novel
+   contribution not in any prior work)
+
+================================================================================
+4. EXPECTED CONTRIBUTIONS
+================================================================================
+
+4.1 Algorithmic Contributions
+-----------------------------
+- Extension of motion planning-bootstrapped RL framework [3] to high-DOF
+  dexterous hands
+- Contact-aware reward shaping mechanisms for multi-finger grasping
+- Demonstration generation pipeline: MoveIt2 (Isaac Sim) → Isaac Lab
+
+4.2 Empirical Contributions
+---------------------------
+- Sample efficiency analysis: Expected 2-4× faster convergence vs pure RL
+- Ablation study isolating effects of:
+  (1) Motion planning bootstrap
+  (2) Contact-aware rewards
+  (3) Their combination
+- Robot comparison: Fully-actuated (26-DOF) vs under-actuated (12-DOF) hands
+- Success rate evaluation on dexterous lift task
+
+4.3 Practical Contributions
+---------------------------
+- Open-source demonstration generation tools for Isaac Lab community
+- Elimination of teleoperation hardware requirement ($10,000+ cost savings)
+- Scalable framework: GPU-parallelized demo generation (4096 environments)
+- Guidelines for applying motion planning bootstrap to contact-rich tasks
+
+================================================================================
+5. DETAILED PLANS
+================================================================================
+
+Week 1: Demonstration Generation (Isaac Sim + MoveIt2)
+-------------------------------------------------------
+Tasks:
+- Configure Isaac Sim with HDR20-DG5F and UH035-Inspire robots
+- Integrate MoveIt2 for motion planning (following NVIDIA tutorial [9])
+- Implement GUI for target pose specification (mouse click interface)
+- Generate 1000 demonstrations per robot for object lift task
+- Validate and export to Isaac Lab format
+
+Deliverables:
+- Demonstration dataset: 1000 trajectories × 2 robots = 2000 demos
+- Conversion script: Isaac Sim → Isaac Lab
+
+Week 2: Contact-Aware Reward Implementation
+-------------------------------------------
+Tasks:
+- Implement contact gating mechanism (modify dexsuite_env_cfg.py:368-400)
+- Add grasp duration tracking (mdp/rewards.py)
+- Add ground contact penalty (mdp/rewards.py)
+- Validate reward signals in single environment (debug mode)
+
+Deliverables:
+- Updated reward configuration files
+- Reward component validation plots
+
+Week 3: Behavior Cloning Pre-training
+-------------------------------------
+Tasks:
+- Implement BC training loop (supervised learning on demonstrations)
+- Train policy network for 50 epochs per robot
+- Evaluate imitation accuracy on validation set
+- Checkpoint best BC models
+
+Deliverables:
+- Pre-trained policy checkpoints (2 robots)
+- BC training curves (loss, accuracy)
+
+Week 4: RL Training with Demonstrations
+---------------------------------------
+Tasks:
+- Modify RL-Games PPO to support demonstration buffer (DQfD-style [10])
+- Implement prioritized replay: 25% demos + 75% self-generated data
+- Train 4 variants:
+  (1) Pure PPO (baseline)
+  (2) BC + PPO (motion planning bootstrap)
+  (3) PPO + Contact-Aware Rewards
+  (4) BC + PPO + Contact-Aware (full method)
+- Run on both robots: 8 total experiments (4 variants × 2 robots)
+- Training budget: 5000 epochs per variant (sufficient for trend analysis)
+
+Deliverables:
+- 8 trained policy checkpoints
+- TensorBoard logs (learning curves, success rates)
+
+Week 5: Evaluation and Analysis
+-------------------------------
+Tasks:
+- Collect evaluation metrics:
+  - Success rate (% episodes reaching goal)
+  - Sample efficiency (steps to 80% success)
+  - Contact force statistics (mean, max, distribution)
+  - Grasp quality metrics (contact points, force closure)
+- Ablation analysis: Quantify contribution of each component
+- Robot comparison: HDR20-DG5F vs UH035-Inspire performance
+- Generate plots and statistical tests
+
+Deliverables:
+- Final report (4-6 pages)
+- Result plots and tables
+- Video demonstrations (successful grasps)
+
+================================================================================
+6. RISK MITIGATION
+================================================================================
+
+Risk 1: MoveIt2 + Isaac Sim Integration Complexity
+--------------------------------------------------
+Mitigation: NVIDIA provides official tutorial [9]. If integration fails, use
+Isaac Sim's built-in motion planner (RMPflow) as fallback.
+
+Risk 2: Demonstration Quality for High-DOF Hands
+------------------------------------------------
+Mitigation: Motion planner may produce suboptimal finger trajectories. If BC
+pre-training fails, skip Phase 2 BC and directly use demonstrations in replay
+buffer during RL (DQfD-style [10]).
+
+Risk 3: Insufficient Training Time (5 weeks)
+--------------------------------------------
+Mitigation: Prioritize core experiments (Pure PPO vs BC+PPO+Contact-Aware).
+If time limited, reduce ablation study to 2 variants instead of 4.
+
+================================================================================
+7. REFERENCES
+================================================================================
+
+[1] A. Rajeswaran et al., "Learning Complex Dexterous Manipulation with Deep
+    Reinforcement Learning and Demonstrations," Robotics: Science and Systems
+    (RSS), 2018.
+
+[2] M. Andrychowicz et al., "Learning dexterous in-hand manipulation,"
+    International Journal of Robotics Research, vol. 39, 2020.
+
+[3] B. Abbatematteo et al., "Bootstrapping Motor Skill Learning with Motion
+    Planning," arXiv:2101.04736, 2021.
+
+[4] "PLANRL: A Motion Planning and Imitation Learning Framework to Bootstrap
+    Reinforcement Learning," arXiv:2408.04054, 2024.
+
+[5] "Reinforcement Learning in Robotic Motion Planning by Combined
+    Experience-based Planning and Self-Imitation Learning," Robotics and
+    Autonomous Systems, 2023.
+
+[6] A. Petrenko et al., "DexPBT: Scaling up Dexterous Manipulation for
+    Hand-Arm Systems with Population Based Training," Robotics: Science and
+    Systems (RSS), 2023.
+
+[7] W. Hu et al., "Dexterous In-Hand Manipulation of Slender Cylindrical
+    Objects through Deep Reinforcement Learning with Tactile Sensing,"
+    Mechatronics, 2024.
+
+[8] T. Hester et al., "Learning from Demonstrations for Real World
+    Reinforcement Learning," AAAI, 2018.
+
+[9] NVIDIA, "Create Realistic Robotics Simulations with ROS 2 MoveIt and
+    NVIDIA Isaac Sim," Technical Blog, 2023.
+    https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+
+[10] T. Hester et al., "Deep Q-learning from Demonstrations," AAAI, 2018.
+
+================================================================================
+END OF PROPOSAL
+================================================================================

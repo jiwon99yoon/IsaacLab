@@ -27,8 +27,8 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 FRANKA_PANDA_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         #usd_path="/home/dyros/isaacsim_assets/Assets/Isaac/5.0/Isaac/IsaacLab/Factory/franka_mimic_fixed.usd",
-        usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Factory/franka_mimic.usd",
         #usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Factory/franka_mimic.usd",
+        usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Factory/franka_mimic.usd",
         #usd_path=f"{ISAACLAB_NUCLEUS_DIR}/Robots/FrankaEmika/panda_instanceable.usd",
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(

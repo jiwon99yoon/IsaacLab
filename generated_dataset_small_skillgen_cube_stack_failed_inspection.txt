@@ -1,0 +1,545 @@
+
+======================================================================
+File: datasets/generated_dataset_small_skillgen_cube_stack_failed.hdf5
+======================================================================
+Top-level keys: ['data']
+  @env_args: {"env_name": "Isaac-Stack-Cube-Franka-IK-Rel-Skillgen-v0", "type": 2, "sim_args": {"dt": 0.01, "decimation": 5, "render_interval": 2, "num_envs": 1}}
+  @total: 2692
+[Group] data/
+  @env_args: {"env_name": "Isaac-Stack-Cube-Franka-IK-Rel-Skillgen-v0", "type": 2, "sim_args": {"dt": 0.01, "decimation": 5, "render_interval": 2, "num_envs": 1}}
+  @total: 2692
+  [Group] data/demo_0/
+    @num_samples: 448
+    @success: False
+    [Dataset] data/demo_0/actions
+      Shape: (448, 7), Dtype: float32
+    [Group] data/demo_0/initial_state/
+      [Group] data/demo_0/initial_state/articulation/
+        [Group] data/demo_0/initial_state/articulation/robot/
+          [Dataset] data/demo_0/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_0/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_0/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_0/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_0/initial_state/rigid_object/
+        [Group] data/demo_0/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_0/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_0/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_0/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_0/obs/
+      [Dataset] data/demo_0/obs/actions
+        Shape: (448, 7), Dtype: float32
+      [Dataset] data/demo_0/obs/cube_orientations
+        Shape: (448, 12), Dtype: float32
+      [Dataset] data/demo_0/obs/cube_positions
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_0/obs/eef_pos
+        Shape: (448, 3), Dtype: float32
+      [Dataset] data/demo_0/obs/eef_quat
+        Shape: (448, 4), Dtype: float32
+      [Dataset] data/demo_0/obs/gripper_pos
+        Shape: (448, 2), Dtype: float32
+      [Dataset] data/demo_0/obs/joint_pos
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_0/obs/joint_vel
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_0/obs/object
+        Shape: (448, 39), Dtype: float32
+    [Dataset] data/demo_0/processed_actions
+      Shape: (448, 8), Dtype: float32
+    [Group] data/demo_0/states/
+      [Group] data/demo_0/states/articulation/
+        [Group] data/demo_0/states/articulation/robot/
+          [Dataset] data/demo_0/states/articulation/robot/joint_position
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_0/states/articulation/robot/joint_velocity
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_0/states/articulation/robot/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_0/states/articulation/robot/root_velocity
+            Shape: (448, 6), Dtype: float32
+      [Group] data/demo_0/states/rigid_object/
+        [Group] data/demo_0/states/rigid_object/cube_1/
+          [Dataset] data/demo_0/states/rigid_object/cube_1/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_0/states/rigid_object/cube_1/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_0/states/rigid_object/cube_2/
+          [Dataset] data/demo_0/states/rigid_object/cube_2/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_0/states/rigid_object/cube_2/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_0/states/rigid_object/cube_3/
+          [Dataset] data/demo_0/states/rigid_object/cube_3/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_0/states/rigid_object/cube_3/root_velocity
+            Shape: (448, 6), Dtype: float32
+  [Group] data/demo_1/
+    @num_samples: 448
+    @success: False
+    [Dataset] data/demo_1/actions
+      Shape: (448, 7), Dtype: float32
+    [Group] data/demo_1/initial_state/
+      [Group] data/demo_1/initial_state/articulation/
+        [Group] data/demo_1/initial_state/articulation/robot/
+          [Dataset] data/demo_1/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_1/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_1/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_1/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_1/initial_state/rigid_object/
+        [Group] data/demo_1/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_1/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_1/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_1/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_1/obs/
+      [Dataset] data/demo_1/obs/actions
+        Shape: (448, 7), Dtype: float32
+      [Dataset] data/demo_1/obs/cube_orientations
+        Shape: (448, 12), Dtype: float32
+      [Dataset] data/demo_1/obs/cube_positions
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_1/obs/eef_pos
+        Shape: (448, 3), Dtype: float32
+      [Dataset] data/demo_1/obs/eef_quat
+        Shape: (448, 4), Dtype: float32
+      [Dataset] data/demo_1/obs/gripper_pos
+        Shape: (448, 2), Dtype: float32
+      [Dataset] data/demo_1/obs/joint_pos
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_1/obs/joint_vel
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_1/obs/object
+        Shape: (448, 39), Dtype: float32
+    [Dataset] data/demo_1/processed_actions
+      Shape: (448, 8), Dtype: float32
+    [Group] data/demo_1/states/
+      [Group] data/demo_1/states/articulation/
+        [Group] data/demo_1/states/articulation/robot/
+          [Dataset] data/demo_1/states/articulation/robot/joint_position
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_1/states/articulation/robot/joint_velocity
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_1/states/articulation/robot/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_1/states/articulation/robot/root_velocity
+            Shape: (448, 6), Dtype: float32
+      [Group] data/demo_1/states/rigid_object/
+        [Group] data/demo_1/states/rigid_object/cube_1/
+          [Dataset] data/demo_1/states/rigid_object/cube_1/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_1/states/rigid_object/cube_1/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_1/states/rigid_object/cube_2/
+          [Dataset] data/demo_1/states/rigid_object/cube_2/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_1/states/rigid_object/cube_2/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_1/states/rigid_object/cube_3/
+          [Dataset] data/demo_1/states/rigid_object/cube_3/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_1/states/rigid_object/cube_3/root_velocity
+            Shape: (448, 6), Dtype: float32
+  [Group] data/demo_2/
+    @num_samples: 448
+    @success: False
+    [Dataset] data/demo_2/actions
+      Shape: (448, 7), Dtype: float32
+    [Group] data/demo_2/initial_state/
+      [Group] data/demo_2/initial_state/articulation/
+        [Group] data/demo_2/initial_state/articulation/robot/
+          [Dataset] data/demo_2/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_2/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_2/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_2/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_2/initial_state/rigid_object/
+        [Group] data/demo_2/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_2/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_2/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_2/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_2/obs/
+      [Dataset] data/demo_2/obs/actions
+        Shape: (448, 7), Dtype: float32
+      [Dataset] data/demo_2/obs/cube_orientations
+        Shape: (448, 12), Dtype: float32
+      [Dataset] data/demo_2/obs/cube_positions
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_2/obs/eef_pos
+        Shape: (448, 3), Dtype: float32
+      [Dataset] data/demo_2/obs/eef_quat
+        Shape: (448, 4), Dtype: float32
+      [Dataset] data/demo_2/obs/gripper_pos
+        Shape: (448, 2), Dtype: float32
+      [Dataset] data/demo_2/obs/joint_pos
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_2/obs/joint_vel
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_2/obs/object
+        Shape: (448, 39), Dtype: float32
+    [Dataset] data/demo_2/processed_actions
+      Shape: (448, 8), Dtype: float32
+    [Group] data/demo_2/states/
+      [Group] data/demo_2/states/articulation/
+        [Group] data/demo_2/states/articulation/robot/
+          [Dataset] data/demo_2/states/articulation/robot/joint_position
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_2/states/articulation/robot/joint_velocity
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_2/states/articulation/robot/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_2/states/articulation/robot/root_velocity
+            Shape: (448, 6), Dtype: float32
+      [Group] data/demo_2/states/rigid_object/
+        [Group] data/demo_2/states/rigid_object/cube_1/
+          [Dataset] data/demo_2/states/rigid_object/cube_1/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_2/states/rigid_object/cube_1/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_2/states/rigid_object/cube_2/
+          [Dataset] data/demo_2/states/rigid_object/cube_2/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_2/states/rigid_object/cube_2/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_2/states/rigid_object/cube_3/
+          [Dataset] data/demo_2/states/rigid_object/cube_3/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_2/states/rigid_object/cube_3/root_velocity
+            Shape: (448, 6), Dtype: float32
+  [Group] data/demo_3/
+    @num_samples: 452
+    @success: False
+    [Dataset] data/demo_3/actions
+      Shape: (452, 7), Dtype: float32
+    [Group] data/demo_3/initial_state/
+      [Group] data/demo_3/initial_state/articulation/
+        [Group] data/demo_3/initial_state/articulation/robot/
+          [Dataset] data/demo_3/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_3/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_3/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_3/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_3/initial_state/rigid_object/
+        [Group] data/demo_3/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_3/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_3/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_3/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_3/obs/
+      [Dataset] data/demo_3/obs/actions
+        Shape: (452, 7), Dtype: float32
+      [Dataset] data/demo_3/obs/cube_orientations
+        Shape: (452, 12), Dtype: float32
+      [Dataset] data/demo_3/obs/cube_positions
+        Shape: (452, 9), Dtype: float32
+      [Dataset] data/demo_3/obs/eef_pos
+        Shape: (452, 3), Dtype: float32
+      [Dataset] data/demo_3/obs/eef_quat
+        Shape: (452, 4), Dtype: float32
+      [Dataset] data/demo_3/obs/gripper_pos
+        Shape: (452, 2), Dtype: float32
+      [Dataset] data/demo_3/obs/joint_pos
+        Shape: (452, 9), Dtype: float32
+      [Dataset] data/demo_3/obs/joint_vel
+        Shape: (452, 9), Dtype: float32
+      [Dataset] data/demo_3/obs/object
+        Shape: (452, 39), Dtype: float32
+    [Dataset] data/demo_3/processed_actions
+      Shape: (452, 8), Dtype: float32
+    [Group] data/demo_3/states/
+      [Group] data/demo_3/states/articulation/
+        [Group] data/demo_3/states/articulation/robot/
+          [Dataset] data/demo_3/states/articulation/robot/joint_position
+            Shape: (452, 9), Dtype: float32
+          [Dataset] data/demo_3/states/articulation/robot/joint_velocity
+            Shape: (452, 9), Dtype: float32
+          [Dataset] data/demo_3/states/articulation/robot/root_pose
+            Shape: (452, 7), Dtype: float32
+          [Dataset] data/demo_3/states/articulation/robot/root_velocity
+            Shape: (452, 6), Dtype: float32
+      [Group] data/demo_3/states/rigid_object/
+        [Group] data/demo_3/states/rigid_object/cube_1/
+          [Dataset] data/demo_3/states/rigid_object/cube_1/root_pose
+            Shape: (452, 7), Dtype: float32
+          [Dataset] data/demo_3/states/rigid_object/cube_1/root_velocity
+            Shape: (452, 6), Dtype: float32
+        [Group] data/demo_3/states/rigid_object/cube_2/
+          [Dataset] data/demo_3/states/rigid_object/cube_2/root_pose
+            Shape: (452, 7), Dtype: float32
+          [Dataset] data/demo_3/states/rigid_object/cube_2/root_velocity
+            Shape: (452, 6), Dtype: float32
+        [Group] data/demo_3/states/rigid_object/cube_3/
+          [Dataset] data/demo_3/states/rigid_object/cube_3/root_pose
+            Shape: (452, 7), Dtype: float32
+          [Dataset] data/demo_3/states/rigid_object/cube_3/root_velocity
+            Shape: (452, 6), Dtype: float32
+  [Group] data/demo_4/
+    @num_samples: 448
+    @success: False
+    [Dataset] data/demo_4/actions
+      Shape: (448, 7), Dtype: float32
+    [Group] data/demo_4/initial_state/
+      [Group] data/demo_4/initial_state/articulation/
+        [Group] data/demo_4/initial_state/articulation/robot/
+          [Dataset] data/demo_4/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_4/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_4/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_4/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_4/initial_state/rigid_object/
+        [Group] data/demo_4/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_4/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_4/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_4/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_4/obs/
+      [Dataset] data/demo_4/obs/actions
+        Shape: (448, 7), Dtype: float32
+      [Dataset] data/demo_4/obs/cube_orientations
+        Shape: (448, 12), Dtype: float32
+      [Dataset] data/demo_4/obs/cube_positions
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_4/obs/eef_pos
+        Shape: (448, 3), Dtype: float32
+      [Dataset] data/demo_4/obs/eef_quat
+        Shape: (448, 4), Dtype: float32
+      [Dataset] data/demo_4/obs/gripper_pos
+        Shape: (448, 2), Dtype: float32
+      [Dataset] data/demo_4/obs/joint_pos
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_4/obs/joint_vel
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_4/obs/object
+        Shape: (448, 39), Dtype: float32
+    [Dataset] data/demo_4/processed_actions
+      Shape: (448, 8), Dtype: float32
+    [Group] data/demo_4/states/
+      [Group] data/demo_4/states/articulation/
+        [Group] data/demo_4/states/articulation/robot/
+          [Dataset] data/demo_4/states/articulation/robot/joint_position
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_4/states/articulation/robot/joint_velocity
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_4/states/articulation/robot/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_4/states/articulation/robot/root_velocity
+            Shape: (448, 6), Dtype: float32
+      [Group] data/demo_4/states/rigid_object/
+        [Group] data/demo_4/states/rigid_object/cube_1/
+          [Dataset] data/demo_4/states/rigid_object/cube_1/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_4/states/rigid_object/cube_1/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_4/states/rigid_object/cube_2/
+          [Dataset] data/demo_4/states/rigid_object/cube_2/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_4/states/rigid_object/cube_2/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_4/states/rigid_object/cube_3/
+          [Dataset] data/demo_4/states/rigid_object/cube_3/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_4/states/rigid_object/cube_3/root_velocity
+            Shape: (448, 6), Dtype: float32
+  [Group] data/demo_5/
+    @num_samples: 448
+    @success: False
+    [Dataset] data/demo_5/actions
+      Shape: (448, 7), Dtype: float32
+    [Group] data/demo_5/initial_state/
+      [Group] data/demo_5/initial_state/articulation/
+        [Group] data/demo_5/initial_state/articulation/robot/
+          [Dataset] data/demo_5/initial_state/articulation/robot/joint_position
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_5/initial_state/articulation/robot/joint_velocity
+            Shape: (1, 9), Dtype: float32
+          [Dataset] data/demo_5/initial_state/articulation/robot/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_5/initial_state/articulation/robot/root_velocity
+            Shape: (1, 6), Dtype: float32
+      [Group] data/demo_5/initial_state/rigid_object/
+        [Group] data/demo_5/initial_state/rigid_object/cube_1/
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_1/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_1/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_5/initial_state/rigid_object/cube_2/
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_2/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_2/root_velocity
+            Shape: (1, 6), Dtype: float32
+        [Group] data/demo_5/initial_state/rigid_object/cube_3/
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_3/root_pose
+            Shape: (1, 7), Dtype: float32
+          [Dataset] data/demo_5/initial_state/rigid_object/cube_3/root_velocity
+            Shape: (1, 6), Dtype: float32
+    [Group] data/demo_5/obs/
+      [Dataset] data/demo_5/obs/actions
+        Shape: (448, 7), Dtype: float32
+      [Dataset] data/demo_5/obs/cube_orientations
+        Shape: (448, 12), Dtype: float32
+      [Dataset] data/demo_5/obs/cube_positions
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_5/obs/eef_pos
+        Shape: (448, 3), Dtype: float32
+      [Dataset] data/demo_5/obs/eef_quat
+        Shape: (448, 4), Dtype: float32
+      [Dataset] data/demo_5/obs/gripper_pos
+        Shape: (448, 2), Dtype: float32
+      [Dataset] data/demo_5/obs/joint_pos
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_5/obs/joint_vel
+        Shape: (448, 9), Dtype: float32
+      [Dataset] data/demo_5/obs/object
+        Shape: (448, 39), Dtype: float32
+    [Dataset] data/demo_5/processed_actions
+      Shape: (448, 8), Dtype: float32
+    [Group] data/demo_5/states/
+      [Group] data/demo_5/states/articulation/
+        [Group] data/demo_5/states/articulation/robot/
+          [Dataset] data/demo_5/states/articulation/robot/joint_position
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_5/states/articulation/robot/joint_velocity
+            Shape: (448, 9), Dtype: float32
+          [Dataset] data/demo_5/states/articulation/robot/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_5/states/articulation/robot/root_velocity
+            Shape: (448, 6), Dtype: float32
+      [Group] data/demo_5/states/rigid_object/
+        [Group] data/demo_5/states/rigid_object/cube_1/
+          [Dataset] data/demo_5/states/rigid_object/cube_1/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_5/states/rigid_object/cube_1/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_5/states/rigid_object/cube_2/
+          [Dataset] data/demo_5/states/rigid_object/cube_2/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_5/states/rigid_object/cube_2/root_velocity
+            Shape: (448, 6), Dtype: float32
+        [Group] data/demo_5/states/rigid_object/cube_3/
+          [Dataset] data/demo_5/states/rigid_object/cube_3/root_pose
+            Shape: (448, 7), Dtype: float32
+          [Dataset] data/demo_5/states/rigid_object/cube_3/root_velocity
+            Shape: (448, 6), Dtype: float32
+
+======================================================================
+Dataset Statistics: datasets/generated_dataset_small_skillgen_cube_stack_failed.hdf5
+======================================================================
+Total demonstrations: 6
+  demo_0: samples=448, success=False
+  demo_1: samples=448, success=False
+  demo_2: samples=448, success=False
+  demo_3: samples=452, success=False
+  demo_4: samples=448, success=False
+  demo_5: samples=448, success=False
+
+Success rate: 0/6 (0.0%)
+Total samples: 2692
+Avg trajectory length: 448.7 ± 1.5
+Min/Max trajectory length: 448/452
+
+======================================================================
+Comparing Demos: [0, 1, 2, 3, 4]
+======================================================================
+
+demo_0:
+  Success: False
+  Length: 448 timesteps
+  EEF travel distance: 1.964m
+  Start pos: [ 0.44389004 -0.03266208  0.34555915]
+  End pos: [ 0.5597178 -0.0048275  0.1848208]
+
+demo_1:
+  Success: False
+  Length: 448 timesteps
+  EEF travel distance: 1.984m
+  Start pos: [ 0.45976356 -0.02603246  0.3809603 ]
+  End pos: [0.4628182  0.04054952 0.15908723]
+
+demo_2:
+  Success: False
+  Length: 448 timesteps
+  EEF travel distance: 2.325m
+  Start pos: [ 0.44875807 -0.01247202  0.37017602]
+  End pos: [ 0.55345905 -0.21211141  0.18963091]
+
+demo_3:
+  Success: False
+  Length: 452 timesteps
+  EEF travel distance: 2.022m
+  Start pos: [ 0.44599235 -0.01675496  0.33575743]
+  End pos: [ 0.5291702  -0.13971126  0.21420246]
+
+demo_4:
+  Success: False
+  Length: 448 timesteps
+  EEF travel distance: 2.140m
+  Start pos: [ 0.45890856 -0.04025023  0.35061446]
+  End pos: [0.4682664  0.11592562 0.17117041]

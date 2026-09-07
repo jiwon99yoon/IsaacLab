@@ -69,3 +69,10 @@ tests/
 
 # Docker history
 .isaac-lab-docker-history
+
+# Large CAD / archive assets (not pushed to GitHub)
+hyundai/
+hyundai.zip
+
+hyundai/
+hyundai.zip

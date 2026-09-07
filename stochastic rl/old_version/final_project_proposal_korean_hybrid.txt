@@ -1,0 +1,369 @@
+================================================================================
+최종 프로젝트 제안서
+확률제어 및 강화학습 과목
+================================================================================
+
+제목: 고자유도 정교한 조작을 위한 접촉 인지 보상 기반
+      모션 플래닝 부트스트랩 강화학습
+
+저자: [이름]
+날짜: 2025년 1월
+
+================================================================================
+1. MOTIVATION
+================================================================================
+
+심층 강화학습(RL)은 정교한 조작(dexterous manipulation) 작업에서 놀라운
+성공을 거두었으며, 복잡한 손안 물체 재배치에서 인간 수준의 성능을 보여주었
+습니다 [1,2]. 그러나 이러한 접근법들은 극심한 샘플 비효율성 문제를 겪으며,
+합리적인 성능에 도달하기 위해 종종 수억 번의 환경 상호작용을 필요로 합니다.
+예를 들어, OpenAI의 Dactyl [2]는 물체 회전 작업을 학습하기 위해 약 100년
+상당의 시뮬레이션 경험을 필요로 했습니다(병렬 컴퓨팅으로 실제 48시간 소요).
+DexPBT [6]는 Kuka 7-DOF 팔과 Allegro 16-DOF 손(총 23-DOF)으로 정교한
+조작을 학습하기 위해 집단 기반 훈련을 사용해야 했습니다. 이러한 한계는
+데이터 수집이 비용이 많이 들고 시간이 오래 걸리는 실제 로봇 시스템에 RL을
+배포하는 것을 심각하게 저해합니다.
+
+
+1.1 기존 해결책과 한계
+---------------------
+
+최근 연구들은 모션 플래닝을 사용하여 자동으로 운동학적으로 실행 가능한
+시연을 생성함으로써 RL을 부트스트랩할 수 있음을 보여주었습니다 [3,4,5].
+Abbatematteo 등 [3]은 운동학 모션 플래닝으로 시연 자동 생성이 가능하며,
+이것이 무작위 초기화보다 크게 우수하고 인간 시연과 경쟁력이 있음을
+보여주었습니다. 그들은 세 가지 조작 작업(서랍 열기, 전자레인지 닫기, 티볼)
+에서 이를 검증했습니다. PLANRL [4]은 고전적 플래닝(웨이포인트 도달)과
+RL(정밀 조작) 사이의 동적 모드 전환으로 이 접근법을 확장하여, UR3e 팔과
+Robotiq Hand-e 그리퍼를 사용한 실제 로봇 실험에서 단순한 들기 작업에서
+90%, 복잡한 2단계 pick-and-place 작업에서 75%의 성공률을 달성했습니다.
+SILP+ [5]는 성공적인 RL 상태로부터 자기 모방 학습을 수행하여 UR5e 팔을
+사용한 pick-and-place 작업에서 시뮬레이션과 실제 로봇 모두 90% 성공률을
+달성했습니다.
+
+그러나 이러한 선행 연구들은 모두 단순한 평행 집게를 가진 로봇 팔(6-7 자유도)
+에만 제한되었습니다. 접촉이 많은 조작 작업을 위한 고자유도 정교한 손
+(20+ 자유도)에 이 방법론을 적용한 선행 연구는 존재하지 않습니다. 이는
+중요한 연구 격차입니다.
+
+
+1.2 연구 격차 및 핵심 질문
+-------------------------
+
+모션 플래닝 부트스트랩 RL을 정교한 손으로 확장하는 것은 세 가지 핵심 도전
+에서 비롯됩니다. 첫째, 고차원 행동 공간 문제입니다. 선행 연구들은 6-7 DOF
+로봇 팔을 다루었지만, 정교한 손은 20+ DOF를 가지므로 행동 공간이 3-4배
+증가합니다. 이는 차원의 저주와 탐색 공간의 폭발적 증가를 초래합니다.
+둘째, 접촉이 풍부한 동역학 문제입니다. 선행 연구들은 자유 공간 도달 또는
+단순 집게 작업을 다루었지만, 정교한 손은 다중 손가락 파지와 접촉력 제어가
+필수적입니다. 그러나 운동학 플래너는 이러한 접촉 동역학을 포착할 수 없습니다.
+셋째, 다중 손가락 협응 문제입니다. 단일 집게의 개폐와 달리, 정교한 손은
+5개 손가락의 독립적이면서도 협조적인 제어를 요구하며, 운동학 플래닝만으로는
+안정적 파지를 보장할 수 없습니다.
+
+따라서 본 연구는 다음과 같은 핵심 질문에 답하고자 합니다: 모션 플래닝
+부트스트랩 RL을 고자유도 정교한 손(20+ DOF)으로 확장하고, 접촉 인지 보상
+형성을 통해 접촉이 많은 조작 작업에서 샘플 효율성을 개선할 수 있는가?
+우리는 이 질문에 대한 답을 통해 정교한 조작 학습의 샘플 효율성을 향상시키고,
+인간 시연 없이 자동으로 시연을 생성하며, 실제 로봇 시스템 배포 가능성을
+높이고자 합니다.
+
+
+================================================================================
+2. PROBLEM DESCRIPTION
+================================================================================
+
+본 연구는 두 가지 산업용 dexterous hand 시스템을 사용하여 접촉이 많은
+물체 들기 작업(object lifting)에 대한 강화학습을 수행합니다. 첫 번째 로봇은
+HDR20-DG5F로, HDR20-17 (6-DOF 산업용 팔)과 DG5F (20-DOF 완전구동 5지
+그리퍼)로 구성되어 총 26-DOF를 가지며, 모든 관절을 독립적으로 제어할 수
+있어 정밀 조작이 가능합니다. 두 번째 로봇은 UH035-Inspire로, UH035 (6-DOF,
+35kg payload)와 Inspire (6 actuated DOF, 저구동 5지)로 구성되어 총 12
+actuated DOF와 mimic joints를 가지며, 기계적 결합(underactuation)을 통한
+compliance 기반 파지가 특징입니다. 우리는 완전구동 대 저구동 손의 학습
+특성 비교를 통해, 모션 플래닝 부트스트랩이 어떤 구조에서 더 효과적인지
+분석합니다.
+
+실험 환경은 Isaac Lab (NVIDIA Isaac Sim 기반)을 사용하며, GPU 가속을 통해
+4096개의 병렬 환경을 동시에 시뮬레이션합니다. 작업은 테이블 위의 다양한
+물체(16가지 형상: cuboids, spheres, capsules, cones)를 들어올려 목표 위치로
+이동하는 것이며, 안정적 파지 유지와 물체 낙하 방지가 제약 조건입니다.
+RL 알고리즘으로는 RL-Games PPO를 사용하며, 60 Hz의 제어 주기로 PhysX
+물리 엔진을 통해 정밀한 접촉 시뮬레이션을 수행합니다.
+
+
+2.1 3단계 프레임워크
+-------------------
+
+본 연구는 모션 플래닝 부트스트랩 RL을 고자유도 정교한 손으로 확장하기
+위한 3단계 파이프라인을 제안합니다.
+
+**Phase 1: 자동 시연 생성 (Isaac Sim + MoveIt2)**
+첫 번째 단계는 인간 입력 없이 운동학적으로 타당한 시연을 자동으로 생성하는
+것입니다. 우리는 Abbatematteo et al. [3]의 접근법을 고자유도 손으로 확장하여,
+MoveIt2 모션 플래너를 사용합니다. 먼저 물체 주변 ±10cm 범위에서 목표 자세를
+무작위로 샘플링합니다. 그런 다음 MoveIt2가 RRT-Connect 알고리즘을 사용하여
+전체 26-DOF(또는 12-DOF) 로봇에 대한 충돌 없는 궤적을 계획합니다. 이때
+관절 한계, 속도 및 가속도 제한을 모두 고려합니다. 계획된 궤적을 Isaac Sim
+에서 실행하여 운동학적 실행 가능성을 검증하고, 각 timestep마다 현재 상태
+(관절 위치/속도, 물체 자세 등)와 행동(관절 위치 명령)을 기록합니다. 성공적인
+시연만을 저장하여 로봇당 1000개의 demonstrations를 생성하며, 이를 Isaac Lab
+형식으로 변환합니다. MoveIt2 통합이 복잡할 경우를 대비하여, Isaac Sim 내장
+RMPflow 플래너 또는 Cubic spline 기반 synthetic trajectories를 fallback
+방안으로 준비합니다.
+
+**Phase 2: Behavior Cloning 사전 훈련 (Isaac Lab)**
+두 번째 단계는 생성된 시연으로부터 정책을 초기화하는 것입니다. 우리는
+observation (64-dim)을 입력으로 받아 action (26-dim 또는 12-dim)을 출력하는
+3층 fully-connected network를 구성합니다. Observation은 로봇 상태(관절
+위치/속도), 물체 상태(자세, 속도), 목표 상태(목표 자세), 그리고 손끝 상태
+(위치, 접촉)를 포함합니다. 각 hidden layer는 256, 256, 128 units를 가지며
+ReLU 활성화 함수와 LayerNorm을 사용합니다. 출력층은 Tanh 활성화 함수로
+정규화된 [-1, 1] 범위의 관절 위치 명령을 생성합니다. Demonstrations를
+90/10으로 train/validation set으로 나누고, Mean Squared Error 손실 함수와
+Adam optimizer (learning rate 3e-4)를 사용하여 50 epochs 동안 훈련합니다.
+Validation loss가 10 epochs 동안 개선되지 않으면 early stopping을 적용합니다.
+훈련된 BC policy는 실제 환경에서 30% 이상의 성공률을 보여야 하며, 이는
+무작위 정책보다 크게 우수한 초기화를 제공합니다.
+
+**Phase 3: 접촉 인지 보상을 사용한 RL 미세 조정 (Isaac Lab)**
+세 번째 단계는 BC policy로 초기화된 상태에서 접촉 특화 보상을 사용하여
+RL 훈련을 수행하는 것입니다. PPO 알고리즘을 사용하며, 4096개의 병렬 환경에서
+5000 epochs 동안 훈련합니다. Batch size는 16384 (4096 envs × 4 steps)이며,
+learning rate 3e-4, discount factor 0.99를 사용합니다. DQfD [10] 스타일로
+demonstration buffer를 유지하여, 25%는 시연 데이터에서, 75%는 자체 생성
+데이터에서 샘플링하는 우선순위 재생을 구현합니다. 이는 안정적인 초기화를
+제공하면서도 탐색을 장려하며, BC policy의 전문가 행동을 유지하면서 새로운
+전략을 학습할 수 있게 합니다.
+
+
+2.2 핵심 기여: 접촉 인지 보상 형성
+----------------------------------
+
+기존 RL 정교한 조작 연구들 [1,2,6]은 "지름길 행동(shortcut behavior)"
+문제를 보고했습니다. 예를 들어, 정책이 손가락 대신 팔로 물체를 밀거나,
+순간적으로 두드려 물체를 튕기거나, 바닥 반발력을 악용하여 물체를 들어올리는
+등의 비정상적 행동을 학습할 수 있습니다. 이러한 문제를 해결하기 위해,
+본 연구는 세 가지 접촉 특화 보상 항을 도입합니다.
+
+첫 번째는 접촉 게이팅(contact gating)입니다. 이는 손가락-물체 접촉이 감지될
+때만 위치/방향 추적 보상을 활성화하는 메커니즘입니다. 수식으로 표현하면
+R_gated = R_position × I(contact_force > τ)이며, 여기서 R_position은 물체와
+목표 사이의 거리에 기반한 위치 추적 보상이고, I(·)는 indicator function,
+τ는 0.1 N의 접촉 임계값입니다. 이를 통해 팔 밀기 지름길을 방지하고,
+정책이 손가락을 사용한 실제 파지를 학습하도록 유도합니다.
+
+두 번째는 파지 지속 시간(grasp duration) 보상입니다. 이는 지속적인 다중
+손가락 접촉을 장려하여 순간적 두드림을 방지합니다. 수식은 R_duration =
+(1/N_fingers) × Σⱼ I(contact_jₜ₋ₘ:ₜ > τ)이며, 여기서 contact_jₜ₋ₘ:ₜ는
+손가락 j의 최근 m timesteps (m=10) 동안의 접촉 이력을 나타냅니다. 각
+손가락이 최소 10 timesteps 동안 지속적으로 물체와 접촉을 유지할 때 보상을
+제공하여, 안정적이고 견고한 파지를 학습하도록 합니다.
+
+세 번째는 지면 접촉 벌점(ground contact penalty)입니다. 이는 물체-바닥
+충돌에 대한 벌점을 부여하여 바닥 튕김을 악용하는 행동을 방지합니다.
+수식은 R_ground = -w × I(F_object_z > τ_ground)이며, 여기서 F_object_z는
+물체의 상향 힘(바닥 반발력), τ_ground는 1.0 N, w는 0.5의 벌점 가중치입니다.
+
+최종 보상은 이 세 가지 항과 기존 베이스라인 보상(들어올리기, 방향 등)의
+가중 합으로 계산됩니다: R_total = w₁·R_gated + w₂·R_duration + w₃·R_ground +
+R_baseline, 여기서 w₁=2.0, w₂=1.0, w₃=0.5는 실험을 통해 튜닝된 가중치입니다.
+
+우리의 핵심 통찰은 다음과 같습니다: 모션 플래닝은 운동학적 실행 가능성
+(kinematic feasibility)을 제공하고, 접촉 인지 보상은 동역학적 안정성
+(dynamic stability)을 제공하여, 이 둘의 결합이 견고한 정교한 파지(robust
+dexterous grasping)를 가능하게 합니다. 모션 플래닝만으로는 안정적 파지를
+보장할 수 없으며, 접촉 인지 보상이 RL을 안내하여 플래너가 포착하지 못한
+접촉 동역학을 학습하도록 합니다.
+
+
+2.3 실험 설계: Ablation Study
+----------------------------
+
+우리는 각 구성 요소의 기여도를 정량화하기 위해 ablation study를 수행합니다.
+4가지 변형(variants)을 정의합니다: (1) Pure PPO - BC 초기화와 접촉 보상
+모두 없는 베이스라인, (2) BC + PPO - 모션 플래닝 부트스트랩의 효과만을
+측정, (3) PPO + Contact-Aware Rewards - 접촉 인지 보상의 효과만을 측정,
+(4) BC + PPO + Contact-Aware Rewards - 전체 방법론으로 모든 구성 요소를
+결합. 각 변형을 HDR20-DG5F와 UH035-Inspire 두 로봇에서 실행하여 총 8개
+실험을 수행합니다.
+
+모든 실험은 동일한 훈련 설정을 사용합니다: PPO 알고리즘, 4096 병렬 환경,
+5000 training epochs, 500 steps per episode, batch size 16384, learning rate
+3e-4, discount factor 0.99. 평가 메트릭으로는 네 가지를 사용합니다:
+(1) 성공률 - 목표 도달 에피소드의 비율, (2) 샘플 효율성 - 80% 성공률 도달
+까지 필요한 샘플 수, (3) 접촉력 통계 - 평균 및 최대 접촉력, (4) 파지 품질 -
+접촉점 개수와 힘 폐쇄(force closure) 메트릭.
+
+우리는 다음과 같은 가설을 검증합니다: H1 - BC + PPO는 Pure PPO보다 2-4배
+빠르게 수렴, H2 - Contact-Aware Rewards는 Pure PPO 대비 10-20% 높은 성공률
+달성, H3 - Full method (BC + Contact)가 최고 성능(80%+ 성공률, 가장 빠른
+수렴), H4 - 완전구동 손(HDR20)이 저구동 손(UH035)보다 BC에서 더 큰 이득을
+얻음(운동학 플래닝이 완전구동 손에 더 적합하므로).
+
+
+================================================================================
+3. EXPECTED CONTRIBUTION
+================================================================================
+
+본 연구는 이론적, 알고리즘적, 실용적 측면에서 의미 있는 기여를 제공할 것으로
+기대됩니다.
+
+
+3.1 이론적 및 알고리즘적 기여
+-----------------------------
+
+첫째, 우리는 모션 플래닝 부트스트랩 RL을 고자유도 시스템으로 확장하는
+이론적 검증을 제공합니다. 기존 이론 [3]은 저자유도 로봇 팔(7-DOF)에서
+모션 플래닝 부트스트랩의 효과를 입증했습니다. 본 연구는 이를 고자유도
+정교한 손(26-DOF)으로 확장하여, 모션 플래닝 부트스트랩의 샘플 효율성
+이득이 행동 공간 차원이 증가해도 유지됨을 보입니다. 이는 운동학적 실행
+가능성(kinematic feasibility)이 차원과 무관하며, BC pre-training이 policy
+gradient의 초기 탐색 공간을 효과적으로 제약하기 때문입니다. 오히려
+고차원일수록 무작위 초기화 대비 이득이 더 클 수 있습니다.
+
+둘째, 우리는 운동학 플래닝과 접촉 기반 보상 형성의 상보적 관계를 규명합니다.
+모션 플래닝은 운동학적 초기화를 제공하여 정책을 실행 가능한 궤적 공간으로
+제약하고 충돌 회피와 관절 한계 준수를 보장하지만, 접촉 동역학을 무시합니다.
+반면 접촉 인지 보상은 동역학적 개선(dynamic refinement)을 제공하여 RL이
+안정적 파지 전략을 학습하고, 다중 손가락 협응을 최적화하며, 접촉력 제어를
+학습하도록 합니다. 이 둘의 결합이 각각의 한계를 상호 보완하여, 접촉이 많은
+조작 작업에서 모션 플래닝과 RL의 통합 방법론에 대한 이론적 근거를 제공합니다.
+
+셋째, 우리는 저구동(under-actuated) 대 완전구동(fully-actuated) 손의 학습
+특성을 비교 분석합니다. 우리의 가설은 저구동 손은 기계적 결합으로 인해
+운동학 플래닝 부트스트랩의 이득이 제한적이며, 완전구동 손은 모든 관절 독립
+제어가 가능하므로 운동학 플래닝이 더 효과적이라는 것입니다. 경험적 검증을
+통해 이러한 이론적 이해를 향상시킵니다.
+
+알고리즘적 측면에서, 우리는 세 가지 주요 기여를 제공합니다. 첫째, 인간 개입
+없이 자동으로 고품질 시연을 생성하는 파이프라인입니다. 기존에는 인간 원격
+조작($10,000+ 하드웨어 필요)이 필요했지만, 본 연구는 이를 완전 자동화하여
+인간 시간을 0으로 줄이고 GPU 병렬화를 통해 대량 생성이 가능합니다. 둘째,
+정교한 조작을 위한 체계적인 접촉 인지 보상 프레임워크입니다. 접촉 게이팅,
+파지 지속 시간, 지면 벌점의 세 가지 구성 요소는 각각 명확한 설계 원칙을
+따르며, reward sparsity 해결, shortcut 방지, multi-finger coordination,
+그리고 해석 가능성을 제공합니다. 셋째, BC pre-training과 RL의 효과적인
+결합 방법입니다. DQfD 스타일의 demonstration buffer 유지, 우선순위 재생
+(25% demo + 75% RL data), 그리고 RL 중 auxiliary BC loss를 통해 안정적
+초기화, catastrophic forgetting 방지, 그리고 전문가 행동 유지를 달성합니다.
+
+
+3.2 실용적 기여 및 영향
+-----------------------
+
+실용적 측면에서, 본 연구는 샘플 효율성을 2-4배 향상시킬 것으로 예상됩니다.
+Pure PPO 베이스라인은 80% 성공률에 도달하기까지 약 100M 샘플(5000 epochs ×
+4096 envs × 500 steps)과 약 24시간의 훈련 시간이 필요하지만, 우리의 full
+method (BC + PPO + Contact)는 약 25-50M 샘플과 6-12시간의 훈련 시간으로
+동일한 성공률을 달성할 것으로 예상됩니다. 이는 훈련 시간 12-18시간 절감
+(50-75% 감소), 전력 소비 50-75% 절감(GPU 사용 시간 비례), 그리고 실제
+로봇 적용 시 데이터 수집 시간 및 비용의 대폭 절감을 의미합니다.
+
+비용 절감 측면에서, 기존 인간 시연 수집 방법은 $10,000-$50,000의 원격 조작
+하드웨어와 100-1000 demos × 5분 = 8-83시간의 인간 시간, 그리고 숙련된
+조작자의 전문성을 요구합니다. 순수 RL 방법은 100년 시뮬레이션의 계산 비용과
+약 $3,500+ (OpenAI Dactyl 사례)의 전력 비용이 필요합니다. 반면 본 연구의
+자동 시연 생성은 $0의 하드웨어 비용(소프트웨어만), 약 1시간의 인간 시간
+(설정만), 그리고 4-8시간의 자동 생성 시간만을 요구합니다. RL 훈련은 6-12시간
+으로 단축되어 전력 비용이 50-75% 절감됩니다. 총 절감액은 $10,000+ 하드웨어
+비용과 8-83시간의 인간 시간입니다.
+
+우리는 또한 Isaac Lab 커뮤니티를 위한 오픈소스 도구와 가이드라인을 제공할
+계획입니다. Demonstration generation toolkit (Isaac Sim + MoveIt2 통합
+스크립트, 다양한 로봇에 적용 가능한 템플릿, Isaac Lab format 변환 도구,
+품질 검증 스크립트), Contact-aware reward library (3가지 reward terms 구현,
+튜닝된 hyperparameters, 모듈식 설계, 사용 가이드), 그리고 Implementation
+guide (5주 프로젝트 step-by-step 가이드, 코드 예제, 트러블슈팅 가이드,
+best practices)를 제공하여 연구 재현성(reproducibility)을 향상시키고 산업
+적용을 가속화합니다.
+
+마지막으로, 본 연구는 산업용 로봇(HDR20, UH035)을 사용하여 실제 산업 환경
+배포 가능성을 검증합니다. 이는 학계에서 주로 연구되는 Shadow Hand [1],
+Allegro Hand [6]와 차별화됩니다. 제조업 적용 시나리오(부품 조립, 포장, 검사)
+에서 기존 방법의 한계(각 새로운 물체마다 인간 시연 재수집 필요, 너무 오랜
+훈련 시간)를 극복하고, 새로운 물체에 대해 몇 시간 만에 자동으로 시연을
+생성하고 2-4배 빠른 훈련으로 신속히 적응할 수 있는 비용 효율적 방법을
+제시합니다.
+
+장기적으로, 본 연구는 고자유도 로봇 학습 연구의 샘플 효율성 향상 방법론을
+제시하고, 모션 플래닝과 RL의 통합에 대한 이론적 이해를 증진하며, 접촉이
+많은 조작 작업에 대한 reward shaping 가이드라인을 제공하는 과학적 영향을
+가집니다. 기술적으로는 정교한 조작 RL의 실용성 향상, 산업용 로봇에 RL
+적용 가능성 확대, 자동화된 데이터 생성 파이프라인 표준화에 기여합니다.
+경제적으로는 원격 조작 하드웨어 투자 불필요($10,000+ 절감), 훈련 시간/전력
+비용 절감(50-75%), 그리고 중소기업의 RL 기술 접근성 향상을 가져올 것입니다.
+
+
+================================================================================
+부록: 세부 실행 계획 및 위험 완화
+================================================================================
+
+본 연구는 5주 동안 진행되며, 다음과 같은 일정을 따릅니다. Week 1은 시연
+생성으로, Isaac Sim + MoveIt2 환경 설정(2일), Demo generator 구현 및
+테스트(2일), 1000 demos × 2 robots 생성 및 검증(3일)을 수행합니다. Week 2는
+접촉 인지 보상 구현으로, Contact gating(2일), Grasp duration(1일), Ground
+penalty(1일), 그리고 테스트 및 weight 튜닝(3일)을 수행합니다. Week 3은
+Behavior Cloning으로, BC model/dataset/trainer 구현(3일), 50 epochs 훈련
+(2일), BC policy 검증(2일)을 수행합니다. Week 4는 RL 훈련으로, RL-Games
+수정 및 BC initialization(3일), 8개 실험 실행(11일, 병렬 가능, 최소 3개
+핵심 실험 우선)을 수행합니다. Week 5는 평가 및 분석으로, Policy 평가(3일),
+결과 시각화(2일), 최종 보고서 작성(2일)을 수행합니다.
+
+주요 위험과 완화 전략은 다음과 같습니다. MoveIt2 통합 실패 위험(확률: 중,
+영향: 높음)에 대해서는 Isaac Sim RMPflow를 대안으로 사용합니다. BC 성공률
+낮음 위험(<20%, 확률: 낮, 영향: 중)에 대해서는 BC 없이 RL을 진행할 수
+있습니다. RL 훈련 시간 부족 위험(확률: 중, 영향: 높음)에 대해서는 Priority 1
+실험(bc_ppo_contact HDR20, pure_ppo HDR20, bc_ppo_contact UH035)만 완료합니다.
+GPU 메모리 부족 위험(확률: 낮, 영향: 중)에 대해서는 num_envs를 4096에서
+1024로 축소합니다.
+
+
+================================================================================
+참고문헌
+================================================================================
+
+[1] A. Rajeswaran et al., "Learning Complex Dexterous Manipulation with Deep
+    Reinforcement Learning and Demonstrations," Robotics: Science and Systems
+    (RSS), 2018. https://arxiv.org/abs/1709.10087
+
+[2] M. Andrychowicz et al., "Learning dexterous in-hand manipulation,"
+    International Journal of Robotics Research, vol. 39, no. 1, pp. 3-20,
+    2020. https://arxiv.org/abs/1808.00177
+
+[3] B. Abbatematteo, E. Rosen, S. Tellex, G. Konidaris, "Bootstrapping Motor
+    Skill Learning with Motion Planning," IEEE/RSJ International Conference
+    on Intelligent Robots and Systems (IROS), 2021. arXiv:2101.04736
+
+[4] A. Bhaskar, Z. Mahammad, S. R. Jadhav, P. Tokekar, "PLANRL: A Motion
+    Planning and Imitation Learning Framework to Bootstrap Reinforcement
+    Learning," arXiv:2408.04054, 2024.
+
+[5] S. Lian, R. Ke, D. Li, Y. Zheng, T. Wang, "Reinforcement Learning in
+    Robotic Motion Planning by Combined Experience-based Planning and
+    Self-Imitation Learning," Robotics and Autonomous Systems, vol. 169,
+    104904, 2023. https://arxiv.org/abs/2306.06754
+
+[6] A. Petrenko, A. Allshire, G. State, A. Handa, V. Makoviychuk, "DexPBT:
+    Scaling up Dexterous Manipulation for Hand-Arm Systems with Population
+    Based Training," Robotics: Science and Systems (RSS), 2023.
+    https://arxiv.org/abs/2305.12127
+
+[7] N. Hogan, "Impedance Control: An Approach to Manipulation," Journal of
+    Dynamic Systems, Measurement, and Control, vol. 107, no. 1, pp. 1-7,
+    1985.
+
+[8] A. X. Lee, H. Lu, A. Gupta, S. Levine, P. Abbeel, "Learning force-based
+    manipulation of deformable objects from multiple demonstrations," IEEE
+    International Conference on Robotics and Automation (ICRA), 2015.
+
+[9] NVIDIA, "Create Realistic Robotics Simulations with ROS 2 MoveIt and
+    NVIDIA Isaac Sim," Technical Blog, 2023.
+    https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+
+[10] T. Hester et al., "Deep Q-learning from Demonstrations," AAAI Conference
+     on Artificial Intelligence, 2018. https://arxiv.org/abs/1704.03732
+
+================================================================================
+제안서 끝
+================================================================================

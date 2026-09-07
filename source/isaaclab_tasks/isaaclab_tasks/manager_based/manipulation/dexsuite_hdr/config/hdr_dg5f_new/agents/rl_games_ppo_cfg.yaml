@@ -1,8 +1,10 @@
-# /home/dyros/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite/config/kuka_allegro/agents/rl_games_ppo_cfg.yaml
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+
+# RL Games PPO configuration for HDR20-17 + DG5F Hand
+# Adapted from Kuka-Allegro configuration
 
 params:
   seed: 42
@@ -48,7 +50,7 @@ params:
   load_path: '' # path to the checkpoint to load
 
   config:
-    name: reorient
+    name: dexsuite_hdr_dg5f  # MODIFIED: Changed from "reorient" to properly separate experiments
     env_name: rlgpu
     device: 'cuda:0'
     device_name: 'cuda:0'
@@ -69,7 +71,7 @@ params:
     schedule_type: legacy
     kl_threshold: 0.01
     score_to_win: 100000000
-    max_epochs: 7500 #5000 #10000 #15000 #7500 #750000
+    max_epochs: 15000 #5000 #10000 #15000 #7500 #750000
     save_best_after: 100
     save_frequency: 50
     print_stats: True

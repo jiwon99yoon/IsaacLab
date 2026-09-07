@@ -1,0 +1,1259 @@
+================================================================================
+TODO LIST: Motion Planning-Bootstrapped RL with Contact-Aware Rewards
+프로젝트: Stochastic RL (최종 프로젝트)
+최종 업데이트: 2025-01-14
+================================================================================
+
+[중요] 이 파일은 Claude Code 재로그인 시 프로젝트 진행 상황 파악용입니다.
+[참고] project_context_and_discussion_summary.txt와 함께 읽으세요.
+
+================================================================================
+현재 상태 요약 (Current Status)
+================================================================================
+
+✅ 완료:
+- [x] 프로젝트 제안서 작성 완료 (proposal_submit.txt)
+- [x] 기존 dexsuite_hdr 환경 구축 완료 (HDR20-DG5F)
+- [x] 기존 dexsuite_uh035 환경 구축 완료 (UH035-Inspire)
+- [x] Contact-aware rewards 구현 완료 (ground_contact_penalty, grasp_duration)
+- [x] HDR20-DG5F USD 파일 준비 (/home/dyros/IsaacLab/hyundai/hdr20_dg5f_new.usd)
+- [x] UR10 + ATI + Inspire USD 준비 (/home/dyros/IsaacLab/hyundai/ur10_ati_inspire.usd)
+
+🔄 진행중:
+- [ ] UR10e-DG5F USD 파일 생성 (현재 단계!)
+- [ ] UR10e-Inspire USD 파일 생성
+- [ ] Isaac Lab 로봇 정의 파일 작성
+
+❌ 미완료:
+- [ ] MoveIt2 demonstration generation
+- [ ] BC pre-training
+- [ ] RL fine-tuning
+- [ ] Ablation study
+
+================================================================================
+PHASE 0: 환경 구축 (Environment Setup)
+목표: UR10e-DG5F, UR10e-Inspire 로봇 환경 완성
+예상 소요: 1-2일
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 0.1: USD 파일 생성 (Robot Asset Preparation)                  │
+└─────────────────────────────────────────────────────────────────────┘
+
+파일 위치 참고:
+  ✅ UR10e USD: /home/dyros/isaacsim_assets/Assets/Isaac/5.0/Isaac/Robots/UniversalRobots/ur10e/ur10e.usd
+  ✅ UR10 + ATI + Inspire: /home/dyros/IsaacLab/hyundai/ur10_ati_inspire.usd
+  ✅ DG5F USD: /home/dyros/IsaacLab/hyundai/dg_description/urdf/dg5f_right_new/dg5f_right_new.usd
+  ✅ Inspire URDF: /home/dyros/IsaacLab/hyundai/inspire/URDF/RH56F1_L/urdf/RH56F1_L.urdf
+
+Tasks:
+
+[ ] 0.1.1: UR10 + ATI + DG5F USD 생성 (가장 빠름, 우선순위 1)
+    방법: Isaac Sim GUI 사용
+    1. [ ] Isaac Sim 실행: cd ~/isaacsim && ./isaac-sim.sh
+    2. [ ] File → Open → /home/dyros/IsaacLab/hyundai/ur10_ati_inspire.usd
+    3. [ ] Stage 패널에서 Inspire hand prim 찾아서 삭제
+    4. [ ] wrist_3_link에 DG5F reference 추가
+           Path: /home/dyros/IsaacLab/hyundai/dg_description/urdf/dg5f_right_new/dg5f_right_new.usd
+    5. [ ] Fixed Joint 생성:
+           - Body 0: /ur10_ati/ur10/wrist_3_link
+           - Body 1: /dg5f_hand/base_link
+    6. [ ] Transform 조정 (DG5F 위치/방향)
+           - Translation: (0, 0, 0.05) 정도에서 시작
+           - Rotation: 필요 시 조정
+    7. [ ] File → Save As → /home/dyros/IsaacLab/hyundai/ur10_ati_dg5f.usd
+    8. [ ] Articulation Inspector로 검증 (26 DOF 확인)
+    9. [ ] Physics Simulation 테스트 (Play 버튼)
+
+    출력 파일: /home/dyros/IsaacLab/hyundai/ur10_ati_dg5f.usd
+
+[ ] 0.1.2: UR10e + ATI + DG5F USD 생성 (선택사항, 우선순위 2)
+    방법: UR10e USD에서 시작
+    1. [ ] Isaac Sim에서 UR10e USD 열기
+    2. [ ] ATI FT Sensor 추가 (선택)
+    3. [ ] DG5F 추가 및 Fixed Joint 생성
+    4. [ ] Save As → /home/dyros/IsaacLab/hyundai/ur10e_ati_dg5f.usd
+
+    출력 파일: /home/dyros/IsaacLab/hyundai/ur10e_ati_dg5f.usd
+
+[ ] 0.1.3: UR10e + ATI + Inspire USD 생성 (선택사항, 우선순위 3)
+    방법: 기존 ur10_ati_inspire.usd를 UR10e로 업그레이드
+    1. [ ] Isaac Sim에서 ur10_ati_inspire.usd 열기
+    2. [ ] UR10을 UR10e로 교체 (reference path 변경)
+    3. [ ] Save As → /home/dyros/IsaacLab/hyundai/ur10e_ati_inspire.usd
+
+    출력 파일: /home/dyros/IsaacLab/hyundai/ur10e_ati_inspire.usd
+
+참고 가이드: /home/dyros/IsaacLab/scripts/HOWTO_CREATE_UR10_DG5F.md
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 0.2: Isaac Lab 로봇 정의 파일 생성 (Robot Configuration)       │
+└─────────────────────────────────────────────────────────────────────┘
+
+디렉토리: /home/dyros/IsaacLab/source/isaaclab_assets/isaaclab_assets/robots/
+
+참고 파일:
+  - hdr20_dg5f_new.py (HDR20 + DG5F, 26-DOF)
+  - uh035_inspire_left.py (UH035 + Inspire, 12-DOF)
+  - universal_robots.py (UR10e)
+  - kuka_allegro.py (Kuka + Allegro, 23-DOF, 참고용)
+
+Tasks:
+
+[ ] 0.2.1: ur10_dg5f.py 생성 (UR10/UR10e + DG5F)
+    1. [ ] 파일 생성: source/isaaclab_assets/isaaclab_assets/robots/ur10_dg5f.py
+    2. [ ] ArticulationCfg 정의:
+           - USD path: /home/dyros/IsaacLab/hyundai/ur10_ati_dg5f.usd
+           - activate_contact_sensors: True (매우 중요!)
+           - enabled_self_collisions: True
+           - solver_position_iteration_count: 32
+    3. [ ] init_state 정의 (26 DOF):
+           UR10 arm (6-DOF):
+             - shoulder_pan_joint: 3.14159
+             - shoulder_lift_joint: -1.5708
+             - elbow_joint: 1.5708
+             - wrist_1_joint: -1.5708
+             - wrist_2_joint: -1.5708
+             - wrist_3_joint: 0.0
+           DG5F hand (20-DOF):
+             - rj_dg_[2-5]_[1-4]: Pre-grasp 자세
+             - rj_dg_1_[1-4]: Thumb opposition 자세
+    4. [ ] actuators 정의:
+           Arm (UR10e 스타일, universal_robots.py:81-101 참고):
+             - shoulder: stiffness=1320.0, damping=72.66
+             - elbow: stiffness=600.0, damping=34.64
+             - wrist: stiffness=216.0, damping=29.39
+           Hand (DG5F, hdr20_dg5f_new.py:121-135 참고):
+             - fingers: stiffness=4.0, damping=0.3
+             - effort_limit=5.0
+    5. [ ] __init__.py에 추가:
+           from .ur10_dg5f import UR10_DG5F_CFG
+
+    출력 파일: source/isaaclab_assets/isaaclab_assets/robots/ur10_dg5f.py
+
+[ ] 0.2.2: ur10_inspire.py 생성 (UR10/UR10e + Inspire)
+    1. [ ] 파일 생성: source/isaaclab_assets/isaaclab_assets/robots/ur10_inspire.py
+    2. [ ] ArticulationCfg 정의 (ur10_dg5f.py 참고)
+    3. [ ] init_state 정의 (12 actuated DOF):
+           UR10 arm (6-DOF): 위와 동일
+           Inspire hand (6 actuated DOF):
+             - left_thumb_[1-2]_joint
+             - left_(index|middle|ring|little)_1_joint
+    4. [ ] actuators 정의:
+           Arm: UR10e 스타일 (위와 동일)
+           Hand (Inspire, uh035_inspire_left.py:159-163 참고):
+             - fingers: stiffness=2.5, damping=0.25
+             - effort_limit=1.0 (under-actuated!)
+    5. [ ] __init__.py에 추가
+
+    출력 파일: source/isaaclab_assets/isaaclab_assets/robots/ur10_inspire.py
+
+[ ] 0.2.3: 로봇 정의 검증 (Validation)
+    1. [ ] Isaac Lab standalone script 작성:
+           source/isaaclab_assets/isaaclab_assets/robots/test_ur10_robots.py
+    2. [ ] UR10_DG5F_CFG 로딩 테스트
+    3. [ ] UR10_INSPIRE_CFG 로딩 테스트
+    4. [ ] Articulation 생성 및 joint 확인:
+           - UR10-DG5F: 26 DOF
+           - UR10-Inspire: 12 actuated DOF + mimic joints
+    5. [ ] Contact sensor 활성화 확인
+    6. [ ] Physics simulation 안정성 확인
+
+    테스트 스크립트:
+    python source/isaaclab_assets/isaaclab_assets/robots/test_ur10_robots.py
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 0.3: Dexsuite 환경 생성 (Task Environment Setup)               │
+└─────────────────────────────────────────────────────────────────────┘
+
+디렉토리: /home/dyros/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/
+
+참고 환경:
+  - dexsuite_hdr/ (HDR20-DG5F 환경, 참고!)
+  - dexsuite_uh035/ (UH035-Inspire 환경, 참고!)
+
+Tasks:
+
+[ ] 0.3.1: dexsuite_ur10/ 디렉토리 구조 생성
+    1. [ ] 디렉토리 생성:
+           source/isaaclab_tasks/.../manipulation/dexsuite_ur10/
+    2. [ ] 서브디렉토리 생성:
+           dexsuite_ur10/
+           ├── __init__.py
+           ├── dexsuite_ur10_env.py (메인 실행 파일)
+           ├── config/
+           │   ├── __init__.py
+           │   ├── ur10_dg5f/
+           │   │   ├── __init__.py
+           │   │   ├── dexsuite_ur10_dg5f_env_cfg.py
+           │   │   └── agents/
+           │   │       ├── __init__.py
+           │   │       └── rl_games_ppo_cfg.yaml
+           │   └── ur10_inspire/
+           │       ├── __init__.py
+           │       ├── dexsuite_ur10_inspire_env_cfg.py
+           │       └── agents/
+           │           ├── __init__.py
+           │           └── rl_games_ppo_cfg.yaml
+           └── mdp/ (dexsuite_env_cfg.py의 mdp 재사용)
+
+[ ] 0.3.2: UR10-DG5F 환경 설정 파일 작성
+    파일: config/ur10_dg5f/dexsuite_ur10_dg5f_env_cfg.py
+
+    1. [ ] Base class 임포트:
+           from ...dexsuite_hdr.dexsuite_env_cfg import DexsuiteLiftEnvCfg
+           from isaaclab_assets import UR10_DG5F_CFG
+
+    2. [ ] DexsuiteUR10DG5FEnvCfg 클래스 정의:
+           @configclass
+           class DexsuiteUR10DG5FEnvCfg(DexsuiteLiftEnvCfg):
+               def __post_init__(self):
+                   super().__post_init__()
+
+                   # 로봇 교체
+                   self.scene.robot = UR10_DG5F_CFG.replace(
+                       prim_path="{ENV_REGEX_NS}/Robot"
+                   )
+
+                   # 액션 설정 (26-DOF)
+                   # Contact sensor 설정 (DG5F fingertips)
+                   # Observation 설정
+                   # 테이블/물체 위치 조정 (UR10 reach에 맞게)
+                   # Command 범위 조정
+
+    3. [ ] Contact sensor 설정:
+           - Fingertip bodies: rl_dg_1_4, rl_dg_2_4, rl_dg_3_4, rl_dg_4_4, rl_dg_5_4
+           - ContactSensorCfg 정의
+
+    4. [ ] Observation에 contact 추가:
+           self.observations.proprio.contact = ObsTerm(
+               func=mdp.contact_forces,
+               params={"sensor_cfg": SceneEntityCfg("contact_forces")},
+           )
+
+    5. [ ] 손가락-물체 거리 body names 지정:
+           self.observations.proprio.hand_tips_state_b.params["body_asset_cfg"] =
+               SceneEntityCfg("robot", body_names=["rl_dg_1_4", ...])
+
+    6. [ ] 작업 공간 조정 (UR10 reach 기준):
+           - Object init: (0.8, 0.0, 0.27)
+           - Table init: (0.8, 0.0, 0.235)
+           - Command range: x=(0.7, 0.9), y=(-0.3, 0.3), z=(0.3, 0.6)
+
+[ ] 0.3.3: UR10-Inspire 환경 설정 파일 작성
+    파일: config/ur10_inspire/dexsuite_ur10_inspire_env_cfg.py
+
+    1. [ ] DexsuiteUR10InspireEnvCfg 클래스 정의 (위와 유사)
+    2. [ ] 로봇 교체: UR10_INSPIRE_CFG
+    3. [ ] Contact sensor 설정 (Inspire fingertips):
+           - left_thumb_4, left_index_2, left_middle_2, left_ring_2, left_pinky_2
+    4. [ ] 액션/관측 설정 (12 actuated DOF)
+
+[ ] 0.3.4: RL-Games PPO config 작성
+    파일: config/ur10_dg5f/agents/rl_games_ppo_cfg.yaml
+
+    1. [ ] 기존 HDR config 복사:
+           cp dexsuite_hdr/config/hdr_dg5f_new/agents/rl_games_ppo_cfg.yaml \
+              dexsuite_ur10/config/ur10_dg5f/agents/
+
+    2. [ ] Hyperparameter 조정:
+           params:
+             seed: 42
+             algo:
+               name: a2c_continuous
+             model:
+               name: continuous_a2c_logstd
+             network:
+               name: actor_critic
+               separate: False
+               mlp:
+                 units: [512, 512, 256, 128]
+                 activation: elu
+             config:
+               name: ur10_dg5f
+               num_actors: 4096
+               env_name: isaaclab
+               multi_gpu: False
+               max_epochs: 5000
+               save_interval: 500
+
+    3. [ ] UR10-Inspire용 config도 생성
+
+[ ] 0.3.5: __init__.py 및 gym 환경 등록
+    1. [ ] __init__.py 작성:
+           import gymnasium as gym
+           from . import agents
+           from .dexsuite_ur10_dg5f_env_cfg import (
+               DexsuiteUR10DG5FEnvCfg,
+               DexsuiteUR10DG5FEnvCfg_PLAY,
+           )
+
+    2. [ ] Gym 환경 등록:
+           gym.register(
+               id="Isaac-Dexsuite-UR10-DG5F-v0",
+               entry_point="isaaclab.envs:ManagerBasedRLEnv",
+               kwargs={
+                   "env_cfg_entry_point": DexsuiteUR10DG5FEnvCfg,
+                   "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+               },
+           )
+
+    3. [ ] 상위 __init__.py에도 추가
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 0.4: 환경 검증 (Environment Validation)                        │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 0.4.1: Single environment 테스트
+    1. [ ] 기본 로딩 테스트:
+           python source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_ur10/dexsuite_ur10_env.py \
+               --task Isaac-Dexsuite-UR10-DG5F-v0 \
+               --num_envs 1 \
+               --headless
+
+    2. [ ] Observation space 확인:
+           - Policy obs: 26 DOF + object quat + target pose + actions
+           - Proprio obs: joint pos/vel + fingertip states + contacts
+           - Perception obs: point cloud (64 points)
+
+    3. [ ] Action space 확인: 26-DOF
+
+    4. [ ] Contact sensor 작동 확인:
+           - 손가락이 물체 터치 시 contact force 출력 확인
+
+[ ] 0.4.2: Multi-environment 테스트
+    1. [ ] 4096 envs 생성 테스트:
+           python ... --num_envs 4096 --headless
+
+    2. [ ] GPU 메모리 사용량 확인 (nvidia-smi)
+
+    3. [ ] FPS 확인 (목표: >2000 FPS)
+
+[ ] 0.4.3: Reward 함수 검증
+    1. [ ] Random policy로 100 episodes 실행
+    2. [ ] 각 reward term 출력 확인:
+           - fingers_to_object
+           - position_tracking
+           - orientation_tracking
+           - ground_contact_penalty
+           - grasp_duration
+           - success
+    3. [ ] Reward 범위 확인 (너무 크거나 작지 않은지)
+
+[ ] 0.4.4: Visualization 테스트
+    1. [ ] GUI 모드 실행:
+           python ... --num_envs 16 (--headless 제거)
+
+    2. [ ] 카메라 뷰 조정 및 확인:
+           - 로봇이 제대로 보이는지
+           - 물체가 제대로 spawn되는지
+           - 테이블 위치가 적절한지
+
+    3. [ ] Success visualizer 확인 (테이블 색 변경)
+
+검증 완료 체크리스트:
+  [완료 기준]
+  ✓ 환경이 에러 없이 로드됨
+  ✓ Contact sensor가 작동함
+  ✓ Reward 값이 합리적 범위 내
+  ✓ 4096 envs에서 FPS > 2000
+  ✓ Physics simulation이 안정적 (로봇이 떨어지지 않음)
+
+================================================================================
+PHASE 1: Demonstration Generation (MoveIt2 + Isaac Sim)
+목표: 로봇당 1000 demonstrations 생성
+예상 소요: 1주
+================================================================================
+
+참고 자료:
+  - NVIDIA Blog: https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+  - MoveIt2 Documentation: https://moveit.picknik.ai/main/index.html
+  - Isaac Sim ROS2 Bridge: https://docs.omniverse.nvidia.com/isaacsim/latest/ros2_tutorials/index.html
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1.1: MoveIt2 Setup                                             │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 1.1.1: MoveIt2 설치 및 환경 설정
+    1. [ ] ROS2 Humble 설치 확인:
+           source /opt/ros/humble/setup.bash
+           ros2 --version
+
+    2. [ ] MoveIt2 설치:
+           sudo apt install ros-humble-moveit
+
+    3. [ ] MoveIt2 config package 생성:
+           ros2 launch moveit_setup_assistant setup_assistant.launch.py
+
+    4. [ ] UR10e URDF 로드 및 MoveIt config 생성
+
+[ ] 1.1.2: UR10-DG5F MoveIt Configuration
+    1. [ ] URDF 준비:
+           - Base: UR10e URDF
+           - End-effector: DG5F URDF
+           - 결합: Fixed joint로 연결
+
+    2. [ ] SRDF 생성 (Semantic Robot Description):
+           - Planning groups:
+             * "arm": UR10 6 joints
+             * "hand": DG5F 20 joints
+             * "arm_hand": 26 joints (전체)
+           - End-effector: DG5F palm
+           - Disable collisions: arm-hand adjacent links
+
+    3. [ ] Controllers 설정:
+           - Joint Trajectory Controller
+
+    4. [ ] Planning 설정:
+           - Planner: RRT-Connect (빠르고 안정적)
+           - Planning attempts: 10
+           - Planning time: 5 seconds
+
+[ ] 1.1.3: UR10-Inspire MoveIt Configuration
+    1. [ ] 위와 동일하게 진행 (12 actuated DOF)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1.2: Isaac Sim + ROS2 Integration                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 1.2.1: Isaac Sim ROS2 Bridge 설정
+    1. [ ] Isaac Sim 실행 및 ROS2 extension 활성화:
+           Window → Extensions → omni.isaac.ros2_bridge
+
+    2. [ ] UR10-DG5F USD 로드
+
+    3. [ ] ROS2 topics 설정:
+           - /joint_states (publish)
+           - /joint_trajectory_controller/command (subscribe)
+           - /tf (publish)
+
+    4. [ ] ROS2 bridge 테스트:
+           ros2 topic list
+           ros2 topic echo /joint_states
+
+[ ] 1.2.2: MoveIt2 + Isaac Sim 연동 테스트
+    1. [ ] Terminal 1: Isaac Sim 실행 (ROS2 bridge 활성화)
+    2. [ ] Terminal 2: MoveIt2 실행:
+           ros2 launch ur10_dg5f_moveit_config demo.launch.py
+    3. [ ] MoveIt RViz에서 target pose 설정
+    4. [ ] Plan & Execute
+    5. [ ] Isaac Sim에서 로봇이 움직이는지 확인
+
+[ ] 1.2.3: 통신 안정성 확인
+    1. [ ] Joint state 동기화 확인
+    2. [ ] 명령 지연 시간 측정
+    3. [ ] 여러 trajectory 실행 테스트
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1.3: Automated Demonstration Generation Script                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 1.3.1: 데모 생성 스크립트 작성
+    파일: scripts/generate_demonstrations.py
+
+    기능:
+    1. [ ] Random target object pose 생성
+    2. [ ] MoveIt2로 trajectory planning:
+           - Start: Home position
+           - Goal: Pre-grasp pose (물체 위)
+    3. [ ] Isaac Sim에서 trajectory 실행
+    4. [ ] (state, action) pairs 기록:
+           - State: joint pos/vel, object pose, target pose
+           - Action: joint position commands
+    5. [ ] Hand closing 동작 추가 (grasp)
+    6. [ ] Lift 동작 (z축 방향 이동)
+    7. [ ] Success 판정 (물체가 들어올려졌는지)
+    8. [ ] 데이터 저장 (HDF5 또는 pickle)
+
+[ ] 1.3.2: Grasp pose 생성 로직
+    1. [ ] 물체 주변 여러 grasp candidate 생성:
+           - Top grasp
+           - Side grasp (4 directions)
+    2. [ ] Collision checking (MoveIt2)
+    3. [ ] IK solution 존재 여부 확인
+    4. [ ] 실행 가능한 grasp 중 랜덤 선택
+
+[ ] 1.3.3: 대규모 생성 파이프라인
+    1. [ ] Parallelization 전략:
+           - Multiple Isaac Sim instances
+           - 또는 Sequential (simple)
+    2. [ ] Progress tracking (진행률 표시)
+    3. [ ] Error handling (planning 실패 시)
+    4. [ ] Data validation (저장된 데이터 검증)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1.4: Demonstration Execution & Data Collection                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 1.4.1: UR10-DG5F demonstrations (1000 demos)
+    실행:
+    python scripts/generate_demonstrations.py \
+        --robot ur10_dg5f \
+        --num_demos 1000 \
+        --output data/demonstrations/ur10_dg5f_demos.hdf5
+
+    목표:
+    - [x] 1000 successful demonstrations
+    - [x] Success rate > 70% (planning + execution)
+    - [x] 평균 trajectory length: 50-100 steps
+    - [x] 다양한 물체 shapes (16 types)
+
+[ ] 1.4.2: UR10-Inspire demonstrations (1000 demos)
+    실행:
+    python scripts/generate_demonstrations.py \
+        --robot ur10_inspire \
+        --num_demos 1000 \
+        --output data/demonstrations/ur10_inspire_demos.hdf5
+
+[ ] 1.4.3: Data format 정의
+    HDF5 structure:
+    /demonstrations/
+        /demo_0000/
+            /observations/
+                /policy/         # [T, obs_dim]
+                /proprio/        # [T, proprio_dim]
+            /actions/            # [T, action_dim]
+            /rewards/            # [T]
+            /dones/              # [T]
+            /success             # bool
+        /demo_0001/
+        ...
+
+[ ] 1.4.4: 데이터 검증 및 분석
+    1. [ ] 데모 개수 확인: 1000개
+    2. [ ] Success rate 계산
+    3. [ ] Trajectory length 분포 시각화
+    4. [ ] Action distribution 확인
+    5. [ ] Outlier 제거 (너무 짧거나 긴 trajectory)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 1.5: Isaac Lab Format 변환                                     │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 1.5.1: Converter 스크립트 작성
+    파일: scripts/convert_demos_to_isaaclab.py
+
+    기능:
+    1. [ ] MoveIt2 demonstration 로드
+    2. [ ] Isaac Lab observation format으로 변환:
+           - history_length=5 고려
+           - observation concatenation
+    3. [ ] Action normalization (필요 시)
+    4. [ ] Isaac Lab ReplayBuffer format으로 저장
+
+[ ] 1.5.2: 변환 실행
+    python scripts/convert_demos_to_isaaclab.py \
+        --input data/demonstrations/ur10_dg5f_demos.hdf5 \
+        --output data/demonstrations/ur10_dg5f_isaaclab.pkl
+
+[ ] 1.5.3: 변환 데이터 검증
+    1. [ ] Observation shape 확인
+    2. [ ] Action shape 확인
+    3. [ ] 샘플 demo 로드 및 시각화
+
+================================================================================
+PHASE 2: Contact-Aware Reward Implementation
+목표: Contact-specific rewards 구현 및 검증
+예상 소요: 3-4일
+================================================================================
+
+참고:
+  - 기존 구현: dexsuite_hdr/dexsuite_env_cfg.py (lines 424-439)
+  - ground_contact_penalty: 이미 구현됨
+  - grasp_duration: 이미 구현됨
+  - contact gating: 새로 구현 필요
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 2.1: Contact Gating Reward 구현                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+파일: source/isaaclab_tasks/.../dexsuite_ur10/mdp/rewards.py
+
+[ ] 2.1.1: Contact gating 함수 구현
+    def position_tracking_with_contact_gating(
+        env: ManagerBasedRLEnv,
+        asset_cfg: SceneEntityCfg,
+        std: float,
+        command_name: str,
+        align_asset_cfg: SceneEntityCfg,
+        contact_sensor_cfg: SceneEntityCfg,
+        min_contact_force: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Position tracking reward, gated by finger-object contact.
+
+        Reward is only active when at least one finger is in contact
+        with the object, preventing arm-only pushing strategies.
+        """
+        # 1. [ ] Contact force 읽기
+        # 2. [ ] Contact mask 생성 (force > threshold)
+        # 3. [ ] Position tracking error 계산
+        # 4. [ ] error * contact_mask 반환
+
+[ ] 2.1.2: RewardsCfg에 추가
+    파일: config/ur10_dg5f/dexsuite_ur10_dg5f_env_cfg.py
+
+    position_tracking_gated = RewTerm(
+        func=mdp.position_tracking_with_contact_gating,
+        weight=3.0,  # Higher than original position_tracking
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "std": 0.2,
+            "command_name": "object_pose",
+            "align_asset_cfg": SceneEntityCfg("object"),
+            "contact_sensor_cfg": SceneEntityCfg("contact_forces"),
+            "min_contact_force": 1.0,
+        },
+    )
+
+[ ] 2.1.3: 기존 position_tracking 비활성화
+    # self.rewards.position_tracking = None  # Contact gating으로 대체
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 2.2: Reward 검증 (Single Environment)                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 2.2.1: Random policy 테스트
+    1. [ ] Single env에서 실행:
+           python ... --num_envs 1 --enable_cameras
+
+    2. [ ] Tensorboard에 reward logging 추가:
+           - ground_contact_penalty
+           - grasp_duration
+           - position_tracking_gated
+           - good_finger_contact (if exists)
+
+    3. [ ] 100 episodes 실행
+
+[ ] 2.2.2: 시각적 검증
+    1. [ ] GUI에서 손가락-물체 접촉 관찰
+    2. [ ] Contact 발생 시 position_tracking_gated 활성화 확인
+    3. [ ] 물체 바닥 접촉 시 ground_contact_penalty 발생 확인
+
+[ ] 2.2.3: Reward magnitude 조정
+    1. [ ] 각 reward term의 평균/표준편차 계산
+    2. [ ] Weight 조정으로 reward balance 맞추기:
+           - action_l2: -0.005
+           - fingers_to_object: 1.0
+           - position_tracking_gated: 3.0
+           - orientation_tracking: 4.0
+           - ground_contact_penalty: -0.05
+           - grasp_duration: 1.0
+           - success: 10.0
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 2.3: Multi-environment 검증                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 2.3.1: 4096 envs 실행
+    python ... --num_envs 4096 --headless
+
+[ ] 2.3.2: Reward statistics 수집 (1000 steps)
+    1. [ ] 각 reward term의 mean/std 로깅
+    2. [ ] Histogram 시각화
+    3. [ ] Outlier 확인
+
+[ ] 2.3.3: Contact-aware reward 효과 검증
+    비교 실험:
+    - Baseline: Contact rewards 없이 (ground_contact_penalty 비활성화)
+    - Proposed: Contact rewards 활성화
+
+    Metric:
+    - [ ] Good finger contact rate
+    - [ ] Ground contact rate
+    - [ ] Random policy success rate
+
+================================================================================
+PHASE 3: Behavior Cloning Pre-training
+목표: Demonstration으로 policy 초기화, >30% success rate
+예상 소요: 3-4일
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 3.1: BC Network 구현                                           │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 3.1.1: BC Policy Network 정의
+    파일: scripts/bc/bc_network.py
+
+    Architecture:
+    - Input: Observation (policy + proprio)
+    - Hidden: [256, 256, 128] units
+    - Activation: ELU
+    - Output: Action (26-DOF or 12-DOF)
+    - Loss: MSE
+
+    class BCPolicy(nn.Module):
+        def __init__(self, obs_dim, action_dim):
+            # [ ] 3-layer FC network 정의
+
+[ ] 3.1.2: BC Training Loop
+    파일: scripts/bc/train_bc.py
+
+    1. [ ] Demonstration data loader
+    2. [ ] Training loop:
+           - Epochs: 50
+           - Batch size: 256
+           - Optimizer: Adam (lr=3e-4)
+           - Loss: MSE(predicted_action, expert_action)
+    3. [ ] Validation (held-out 10% demos)
+    4. [ ] Model checkpointing
+
+[ ] 3.1.3: Tensorboard logging
+    - Training loss
+    - Validation loss
+    - Action MSE per joint
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 3.2: BC Pre-training Execution                                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 3.2.1: UR10-DG5F BC training
+    실행:
+    python scripts/bc/train_bc.py \
+        --data data/demonstrations/ur10_dg5f_isaaclab.pkl \
+        --epochs 50 \
+        --batch_size 256 \
+        --output models/bc_ur10_dg5f.pth
+
+    목표:
+    - [x] Training loss < 0.01
+    - [x] Validation loss < 0.02
+    - [x] 50 epochs 완료
+
+[ ] 3.2.2: UR10-Inspire BC training
+    python scripts/bc/train_bc.py \
+        --data data/demonstrations/ur10_inspire_isaaclab.pkl \
+        --output models/bc_ur10_inspire.pth
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 3.3: BC Policy Evaluation (Isaac Lab)                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 3.3.1: BC policy를 Isaac Lab에 로드
+    파일: scripts/bc/evaluate_bc.py
+
+    1. [ ] BC policy 로드
+    2. [ ] Isaac Lab env 생성
+    3. [ ] Rollout (100 episodes)
+    4. [ ] Success rate 계산
+
+[ ] 3.3.2: UR10-DG5F BC evaluation
+    python scripts/bc/evaluate_bc.py \
+        --task Isaac-Dexsuite-UR10-DG5F-v0 \
+        --checkpoint models/bc_ur10_dg5f.pth \
+        --num_envs 100 \
+        --episodes 100
+
+    목표 성능:
+    - [x] Success rate > 30%
+    - [x] 평균 episode length: 100-200 steps
+
+[ ] 3.3.3: UR10-Inspire BC evaluation
+    (위와 동일)
+
+[ ] 3.3.4: Failure case 분석
+    1. [ ] 실패 유형 분류:
+           - Planning failure (collision)
+           - Grasp failure (손가락 미접촉)
+           - Drop failure (들어올리다 떨어뜨림)
+    2. [ ] Visualization (실패 사례 동영상)
+    3. [ ] 개선 방향 도출
+
+================================================================================
+PHASE 4: RL Fine-tuning with Demonstrations
+목표: 4 variants 훈련 및 ablation study
+예상 소요: 1-2주
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4.1: Demonstration Buffer 구현                                 │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 4.1.1: DQfD-style Replay Buffer
+    파일: scripts/rl/demo_buffer.py
+
+    기능:
+    1. [ ] Demonstration storage
+    2. [ ] On-policy RL data storage
+    3. [ ] Prioritized sampling:
+           - 25% from demonstrations
+           - 75% from on-policy data
+    4. [ ] Buffer maintenance (demo 데이터 유지)
+
+[ ] 4.1.2: RL-Games integration
+    파일: config/ur10_dg5f/agents/rl_games_ppo_with_demos_cfg.yaml
+
+    수정 사항:
+    1. [ ] Custom network with BC initialization
+    2. [ ] Demonstration buffer 추가
+    3. [ ] BC auxiliary loss term 추가 (optional)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4.2: Ablation Study Variants 정의                              │
+└─────────────────────────────────────────────────────────────────────┘
+
+4 Variants:
+
+[ ] 4.2.1: Variant 1 - Pure PPO (Baseline)
+    Config: rl_games_ppo_baseline_cfg.yaml
+    - No demonstrations
+    - No contact rewards (only basic dexsuite rewards)
+    - Random policy initialization
+
+[ ] 4.2.2: Variant 2 - BC + PPO
+    Config: rl_games_ppo_bc_cfg.yaml
+    - BC pre-trained policy initialization
+    - Demonstration buffer (25% demo + 75% RL)
+    - No contact rewards
+
+[ ] 4.2.3: Variant 3 - PPO + Contact
+    Config: rl_games_ppo_contact_cfg.yaml
+    - Random initialization
+    - Contact-aware rewards (gating, duration, penalty)
+    - No demonstrations
+
+[ ] 4.2.4: Variant 4 - BC + PPO + Contact (Full Method)
+    Config: rl_games_ppo_full_cfg.yaml
+    - BC initialization
+    - Demonstration buffer
+    - Contact-aware rewards
+    - [이것이 최종 제안 방법!]
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4.3: Training Execution (UR10-DG5F)                            │
+└─────────────────────────────────────────────────────────────────────┘
+
+Training command template:
+python scripts/rl_games/train.py \
+    --task Isaac-Dexsuite-UR10-DG5F-v0 \
+    --num_envs 4096 \
+    --max_iterations 5000 \
+    --cfg {variant_config}
+
+[ ] 4.3.1: Variant 1 - Pure PPO
+    python scripts/rl_games/train.py \
+        --task Isaac-Dexsuite-UR10-DG5F-v0 \
+        --cfg rl_games_ppo_baseline_cfg.yaml \
+        --run_name ur10_dg5f_v1_pure_ppo \
+        --seed 42
+
+    예상 시간: 12-24시간 (RTX 4090 기준)
+    목표: Baseline 성능 확립
+
+[ ] 4.3.2: Variant 2 - BC + PPO
+    python scripts/rl_games/train.py \
+        --task Isaac-Dexsuite-UR10-DG5F-v0 \
+        --cfg rl_games_ppo_bc_cfg.yaml \
+        --checkpoint models/bc_ur10_dg5f.pth \
+        --run_name ur10_dg5f_v2_bc_ppo \
+        --seed 42
+
+    목표: BC가 sample efficiency 향상시키는지 확인
+
+[ ] 4.3.3: Variant 3 - PPO + Contact
+    python scripts/rl_games/train.py \
+        --task Isaac-Dexsuite-UR10-DG5F-v0 \
+        --cfg rl_games_ppo_contact_cfg.yaml \
+        --run_name ur10_dg5f_v3_ppo_contact \
+        --seed 42
+
+    목표: Contact rewards의 효과 검증
+
+[ ] 4.3.4: Variant 4 - BC + PPO + Contact (Full)
+    python scripts/rl_games/train.py \
+        --task Isaac-Dexsuite-UR10-DG5F-v0 \
+        --cfg rl_games_ppo_full_cfg.yaml \
+        --checkpoint models/bc_ur10_dg5f.pth \
+        --run_name ur10_dg5f_v4_full \
+        --seed 42
+
+    목표: 최고 성능 달성!
+
+Training monitoring:
+- [ ] Tensorboard 실시간 모니터링
+- [ ] Success rate 추적
+- [ ] Reward curve 분석
+- [ ] Checkpoint 저장 (매 500 epochs)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4.4: Training Execution (UR10-Inspire)                         │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 4.4.1: Variant 1 - Pure PPO (Inspire)
+[ ] 4.4.2: Variant 2 - BC + PPO (Inspire)
+[ ] 4.4.3: Variant 3 - PPO + Contact (Inspire)
+[ ] 4.4.4: Variant 4 - Full Method (Inspire)
+
+(UR10-DG5F와 동일한 과정 반복)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 4.5: Checkpointing & Backup                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 4.5.1: 자동 checkpoint 저장 설정
+    - 매 500 epochs
+    - Best model (highest success rate)
+    - Latest model
+
+[ ] 4.5.2: Backup strategy
+    - 로컬 저장: logs/rl_games/{run_name}/
+    - 외부 백업: Google Drive / 외장 HDD
+
+[ ] 4.5.3: Training resume 테스트
+    - Checkpoint에서 재시작 가능한지 확인
+
+================================================================================
+PHASE 5: Evaluation & Analysis
+목표: 성능 분석, ablation study, 결과 정리
+예상 소요: 3-4일
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.1: Policy Evaluation                                         │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.1.1: Evaluation script 작성
+    파일: scripts/evaluate_policy.py
+
+    기능:
+    1. [ ] Trained policy 로드
+    2. [ ] Deterministic rollout (100 episodes)
+    3. [ ] Metrics 수집:
+           - Success rate
+           - Episode length
+           - Contact force statistics
+           - Grasp quality
+    4. [ ] Video recording (성공/실패 사례)
+
+[ ] 5.1.2: UR10-DG5F 평가 (모든 variants)
+    for variant in v1_pure_ppo v2_bc_ppo v3_ppo_contact v4_full; do
+        python scripts/evaluate_policy.py \
+            --task Isaac-Dexsuite-UR10-DG5F-v0 \
+            --checkpoint logs/rl_games/ur10_dg5f_${variant}/best_model.pth \
+            --num_envs 100 \
+            --episodes 100 \
+            --output results/ur10_dg5f_${variant}.json
+    done
+
+[ ] 5.1.3: UR10-Inspire 평가 (모든 variants)
+    (위와 동일)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.2: Sample Efficiency Analysis                                │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.2.1: Learning curve 비교
+    Script: scripts/analysis/plot_learning_curves.py
+
+    1. [ ] Tensorboard logs 로드 (모든 variants)
+    2. [ ] Success rate vs. training steps 플롯
+    3. [ ] 80% success rate 도달 시점 계산:
+           - Variant 1 (Pure PPO): X samples
+           - Variant 2 (BC+PPO): Y samples
+           - Variant 3 (PPO+Contact): Z samples
+           - Variant 4 (Full): W samples
+    4. [ ] Speedup 계산: X / W = 2-4× expected
+
+[ ] 5.2.2: Sample efficiency metrics
+    - Samples to 50% success
+    - Samples to 80% success
+    - Area under curve (AUC)
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.3: Contact Statistics Analysis                               │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.3.1: Contact force 분석
+    Script: scripts/analysis/analyze_contact.py
+
+    1. [ ] 성공/실패 episode에서 contact force 수집
+    2. [ ] 비교:
+           - Good finger contacts (손가락-물체)
+           - Bad ground contacts (물체-바닥)
+    3. [ ] 시각화:
+           - Contact force histogram
+           - Contact duration distribution
+
+[ ] 5.3.2: Grasp quality 분석
+    1. [ ] Grasp stability metric 정의
+    2. [ ] Variant별 grasp quality 비교
+    3. [ ] Contact reward의 효과 검증
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.4: Robot Comparison (DG5F vs Inspire)                        │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.4.1: 성능 비교 테이블 생성
+    | Metric | UR10-DG5F (26-DOF) | UR10-Inspire (12-DOF) |
+    |--------|--------------------|-----------------------|
+    | Success rate | X% | Y% |
+    | Samples to 80% | A | B |
+    | Grasp quality | C | D |
+
+[ ] 5.4.2: DOF 차이가 성능에 미치는 영향 분석
+    - Fully-actuated (DG5F) vs Under-actuated (Inspire)
+    - 어떤 hand가 더 효율적인가?
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.5: Ablation Study Summary                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.5.1: Ablation study 결과 정리
+    표 생성:
+    | Variant | BC | Demos | Contact | Success | Samples |
+    |---------|-------|-------|---------|---------|---------|
+    | V1 (Pure PPO) | ❌ | ❌ | ❌ | 60% | 100M |
+    | V2 (BC+PPO) | ✅ | ✅ | ❌ | 75% | 50M |
+    | V3 (PPO+Contact) | ❌ | ❌ | ✅ | 70% | 60M |
+    | V4 (Full) | ✅ | ✅ | ✅ | 85% | 25M |
+
+    핵심 발견:
+    - BC alone: +15% success, 2× faster
+    - Contact alone: +10% success, 1.7× faster
+    - BC + Contact: +25% success, 4× faster (synergy!)
+
+[ ] 5.5.2: Statistical significance test
+    - t-test for success rate differences
+    - Confidence intervals
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ STEP 5.6: Visualization & Videos                                    │
+└─────────────────────────────────────────────────────────────────────┘
+
+[ ] 5.6.1: 성공 사례 비디오 녹화
+    - 각 variant당 5개 성공 사례
+    - Different object shapes
+
+[ ] 5.6.2: 실패 사례 분석 비디오
+    - Pure PPO failure modes
+    - Full method failure modes (if any)
+
+[ ] 5.6.3: Learning curve animation
+    - Success rate evolution over training
+    - Side-by-side comparison (4 variants)
+
+================================================================================
+PHASE 6: Final Report & Presentation (선택사항)
+예상 소요: 2-3일
+================================================================================
+
+[ ] 6.1: Results 정리
+    1. [ ] 모든 실험 결과 통합
+    2. [ ] 그래프/테이블 생성
+    3. [ ] Key findings 요약
+
+[ ] 6.2: Report 작성 (LaTeX)
+    1. [ ] Introduction
+    2. [ ] Related Work
+    3. [ ] Method
+    4. [ ] Experiments
+    5. [ ] Results
+    6. [ ] Conclusion
+
+[ ] 6.3: Presentation 준비
+    1. [ ] Slides 작성 (PPT or Beamer)
+    2. [ ] Demo 비디오 편집
+    3. [ ] 발표 연습
+
+================================================================================
+예상 성능 목표 (Expected Results)
+================================================================================
+
+UR10-DG5F (26-DOF):
+  - Pure PPO: 60% success, 100M samples, 24h training
+  - Full method: 85% success, 25M samples, 6h training
+  - Speedup: 4×
+  - Sample efficiency: 75% reduction
+
+UR10-Inspire (12-DOF):
+  - Pure PPO: 55% success, 80M samples, 20h training
+  - Full method: 80% success, 20M samples, 5h training
+  - Speedup: 4×
+
+Key Contributions:
+  ✓ Scaling to high-DOF (26-DOF) dexterous manipulation
+  ✓ Kinematic-dynamic complementarity (planning + contact)
+  ✓ Automated demonstration pipeline (1000 demos, \$0 cost)
+  ✓ 2-4× sample efficiency improvement
+
+================================================================================
+트러블슈팅 가이드 (Common Issues)
+================================================================================
+
+Issue 1: USD 파일이 Isaac Lab에서 로드되지 않음
+  원인: USD 경로가 잘못됨 또는 USD 파일이 손상됨
+  해결:
+  - USD 경로 확인 (절대 경로 사용)
+  - Isaac Sim에서 USD 열어서 검증
+  - ArticulationCfg.spawn.usd_path 확인
+
+Issue 2: Contact sensor가 작동하지 않음
+  원인: activate_contact_sensors=False
+  해결:
+  - ArticulationCfg.spawn.activate_contact_sensors = True 설정
+  - ContactSensorCfg 정의 확인
+
+Issue 3: 로봇이 떨어짐 (gravity)
+  원인: disable_gravity=False 또는 stiffness 너무 낮음
+  해결:
+  - disable_gravity=True 설정 (시뮬레이션 환경)
+  - Stiffness 값 증가 (arm: 1000-20000, hand: 2-5)
+
+Issue 4: Physics simulation이 불안정함
+  원인: solver_iteration_count 너무 낮음
+  해결:
+  - solver_position_iteration_count: 32
+  - solver_velocity_iteration_count: 1
+
+Issue 5: MoveIt2 planning이 자주 실패함
+  원인: Collision, IK solution 없음
+  해결:
+  - Planning time 증가 (5초 → 10초)
+  - Grasp pose candidate 더 생성
+  - Collision margin 조정
+
+Issue 6: BC pre-training이 converge하지 않음
+  원인: Demonstration quality 낮음, learning rate 부적절
+  해결:
+  - Demonstration filtering (outlier 제거)
+  - Learning rate 조정 (3e-4 → 1e-3)
+  - Epochs 증가 (50 → 100)
+
+Issue 7: RL training이 학습되지 않음
+  원인: Reward scaling, exploration 부족
+  해결:
+  - Reward weight 조정
+  - Entropy coefficient 증가
+  - Learning rate 조정
+
+Issue 8: GPU 메모리 부족
+  원인: 4096 envs 너무 많음
+  해결:
+  - num_envs 줄이기 (4096 → 2048)
+  - Batch size 줄이기
+
+================================================================================
+파일 체크리스트 (File Checklist)
+================================================================================
+
+USD Files:
+  [ ] /home/dyros/IsaacLab/hyundai/ur10_ati_dg5f.usd
+  [ ] /home/dyros/IsaacLab/hyundai/ur10e_ati_dg5f.usd (선택)
+  [ ] /home/dyros/IsaacLab/hyundai/ur10_ati_inspire.usd (이미 있음)
+  [ ] /home/dyros/IsaacLab/hyundai/ur10e_ati_inspire.usd (선택)
+
+Robot Configs:
+  [ ] source/isaaclab_assets/isaaclab_assets/robots/ur10_dg5f.py
+  [ ] source/isaaclab_assets/isaaclab_assets/robots/ur10_inspire.py
+
+Environment Configs:
+  [ ] source/isaaclab_tasks/.../dexsuite_ur10/config/ur10_dg5f/dexsuite_ur10_dg5f_env_cfg.py
+  [ ] source/isaaclab_tasks/.../dexsuite_ur10/config/ur10_inspire/dexsuite_ur10_inspire_env_cfg.py
+
+RL Configs:
+  [ ] config/ur10_dg5f/agents/rl_games_ppo_baseline_cfg.yaml
+  [ ] config/ur10_dg5f/agents/rl_games_ppo_bc_cfg.yaml
+  [ ] config/ur10_dg5f/agents/rl_games_ppo_contact_cfg.yaml
+  [ ] config/ur10_dg5f/agents/rl_games_ppo_full_cfg.yaml
+
+Scripts:
+  [ ] scripts/generate_demonstrations.py
+  [ ] scripts/convert_demos_to_isaaclab.py
+  [ ] scripts/bc/train_bc.py
+  [ ] scripts/bc/evaluate_bc.py
+  [ ] scripts/rl_games/train.py
+  [ ] scripts/evaluate_policy.py
+  [ ] scripts/analysis/plot_learning_curves.py
+  [ ] scripts/analysis/analyze_contact.py
+
+Data:
+  [ ] data/demonstrations/ur10_dg5f_demos.hdf5 (1000 demos)
+  [ ] data/demonstrations/ur10_inspire_demos.hdf5 (1000 demos)
+  [ ] data/demonstrations/ur10_dg5f_isaaclab.pkl
+  [ ] data/demonstrations/ur10_inspire_isaaclab.pkl
+
+Models:
+  [ ] models/bc_ur10_dg5f.pth
+  [ ] models/bc_ur10_inspire.pth
+  [ ] logs/rl_games/ur10_dg5f_v1_pure_ppo/
+  [ ] logs/rl_games/ur10_dg5f_v2_bc_ppo/
+  [ ] logs/rl_games/ur10_dg5f_v3_ppo_contact/
+  [ ] logs/rl_games/ur10_dg5f_v4_full/
+
+Results:
+  [ ] results/ur10_dg5f_v1_pure_ppo.json
+  [ ] results/ur10_dg5f_v2_bc_ppo.json
+  [ ] results/ur10_dg5f_v3_ppo_contact.json
+  [ ] results/ur10_dg5f_v4_full.json
+  [ ] results/learning_curves.png
+  [ ] results/ablation_table.csv
+
+================================================================================
+참고 자료 (References)
+================================================================================
+
+프로젝트 문서:
+  - project_context_and_discussion_summary.txt (프로젝트 배경 및 목표)
+  - proposal_submit.txt (최종 제안서)
+  - IMPLEMENTATION_GUIDE_DETAILED.txt (구현 가이드)
+  - HOWTO_CREATE_UR10_DG5F.md (USD 파일 생성 가이드)
+
+기존 환경 참고:
+  - source/isaaclab_tasks/.../dexsuite_hdr/ (HDR20-DG5F)
+  - source/isaaclab_tasks/.../dexsuite_uh035/ (UH035-Inspire)
+  - source/isaaclab_tasks/.../deploy/reach/config/ur_10e/ (UR10e reach)
+
+Isaac Lab 문서:
+  - https://isaac-sim.github.io/IsaacLab/
+  - https://docs.omniverse.nvidia.com/isaacsim/latest/
+
+MoveIt2:
+  - https://moveit.picknik.ai/main/index.html
+
+논문:
+  - Abbatematteo et al. 2021 (Bootstrapping Motor Skill Learning)
+  - PLANRL 2024 (Motion Planning and Imitation Learning)
+  - DexPBT 2023 (Dexterous Manipulation)
+
+================================================================================
+타임라인 요약 (Timeline Summary)
+================================================================================
+
+Week 0 (현재): Phase 0 - 환경 구축
+  [1-2일] USD 파일 생성 → 로봇 정의 → 환경 설정 → 검증
+
+Week 1: Phase 1 - Demonstration Generation
+  [7일] MoveIt2 setup → Isaac Sim integration → Demo generation (2000 demos)
+
+Week 2: Phase 2 & 3 - Contact Rewards + BC
+  [3일] Contact gating 구현 및 검증
+  [4일] BC pre-training 및 평가
+
+Week 3-4: Phase 4 - RL Fine-tuning
+  [10일] 8 experiments (4 variants × 2 robots)
+  [동시 실행 가능하면 5일로 단축]
+
+Week 5: Phase 5 - Evaluation & Analysis
+  [5일] 결과 분석, 시각화, 보고서 작성
+
+Total: 5주 (예상)
+
+================================================================================
+다음 단계 (Next Steps)
+================================================================================
+
+지금 바로 시작:
+  1. [ ] Isaac Sim 실행
+  2. [ ] ur10_ati_inspire.usd 열기
+  3. [ ] Inspire → DG5F 교체 시작
+  4. [ ] ur10_ati_dg5f.usd 저장
+
+재로그인 시 읽을 파일:
+  - todolistforstochasticRLproject.txt (이 파일!)
+  - project_context_and_discussion_summary.txt
+  - HOWTO_CREATE_UR10_DG5F.md
+
+================================================================================
+END OF TODO LIST
+================================================================================

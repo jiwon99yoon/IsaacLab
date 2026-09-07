@@ -1,0 +1,2168 @@
+================================================================================
+프로젝트 구체적 실행 가이드 (Step-by-Step)
+Motion Planning-Bootstrapped RL for High-DOF Dexterous Manipulation
+================================================================================
+
+작성일: 2025-01-11
+프로젝트 기간: 5주
+환경: Isaac Lab, Isaac Sim, MoveIt2, ROS 2
+
+이 가이드는 제안서를 실제로 구현하기 위한 구체적이고 실행 가능한 단계별
+지침입니다.
+
+================================================================================
+📋 프로젝트 개요
+================================================================================
+
+**목표:** MoveIt2 motion planner로 자동 생성된 demonstrations를 사용하여
+         고자유도 dexterous hand의 RL 학습을 가속화
+
+**로봇:**
+- HDR20-DG5F (26-DOF): 완전구동
+- UH035-Inspire (12-DOF): 저구동
+
+**5주 계획:**
+Week 1: Demonstration 생성 (Isaac Sim + MoveIt2)
+Week 2: Contact-aware rewards 구현
+Week 3: Behavior Cloning (BC) pre-training
+Week 4: RL training (4 variants × 2 robots)
+Week 5: Evaluation & analysis
+
+================================================================================
+📁 프로젝트 디렉토리 구조
+================================================================================
+
+프로젝트 루트: /home/dyros/IsaacLab/
+
+생성할 디렉토리:
+/home/dyros/IsaacLab/
+├── demos/                              # 생성된 demonstrations
+│   ├── hdr20_dg5f/
+│   │   ├── raw/                       # Isaac Sim에서 생성된 원본
+│   │   ├── processed/                 # Isaac Lab format으로 변환
+│   │   └── metadata.json              # Demo 정보
+│   └── uh035_inspire/
+│       ├── raw/
+│       ├── processed/
+│       └── metadata.json
+│
+├── results/                            # 실험 결과
+│   ├── week2_rewards/                 # Week 2: Reward validation
+│   ├── week3_bc/                      # Week 3: BC training
+│   ├── week4_rl/                      # Week 4: RL training
+│   │   ├── hdr20_dg5f/
+│   │   │   ├── pure_ppo/
+│   │   │   ├── bc_ppo/
+│   │   │   ├── ppo_contact/
+│   │   │   └── bc_ppo_contact/
+│   │   └── uh035_inspire/
+│   │       └── ... (동일)
+│   └── week5_eval/                    # Week 5: Evaluation
+│
+├── scripts/                            # 구현 스크립트
+│   ├── week1_isaac_sim/
+│   ├── week2_rewards/
+│   ├── week3_bc/
+│   ├── week4_rl/
+│   └── week5_eval/
+│
+└── logs/                               # 실험 로그
+    └── tensorboard/
+
+================================================================================
+🔧 사전 준비 (Week 0)
+================================================================================
+
+Step 0.1: 환경 확인
+-------------------
+현재 환경 상태를 확인합니다.
+
+$ cd /home/dyros/IsaacLab
+$ source activate_isaac_lab.sh  # 또는 ./_isaac_sim/setup_conda_env.sh
+
+# Isaac Lab 환경 테스트
+$ python source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/dexsuite_hdr.py --task Isaac-Lift-HDR-DG5F-v0 --num_envs 4 --headless
+
+# 작동 확인 (5초 정도 실행 후 Ctrl+C)
+
+✅ 체크포인트:
+- Isaac Lab 환경이 에러 없이 실행됨
+- GPU가 정상적으로 인식됨
+
+
+Step 0.2: 프로젝트 디렉토리 생성
+-------------------------------
+$ cd /home/dyros/IsaacLab
+$ mkdir -p demos/{hdr20_dg5f,uh035_inspire}/{raw,processed}
+$ mkdir -p results/{week2_rewards,week3_bc,week4_rl,week5_eval}
+$ mkdir -p results/week4_rl/{hdr20_dg5f,uh035_inspire}/{pure_ppo,bc_ppo,ppo_contact,bc_ppo_contact}
+$ mkdir -p scripts/{week1_isaac_sim,week2_rewards,week3_bc,week4_rl,week5_eval}
+$ mkdir -p logs/tensorboard
+
+✅ 체크포인트:
+- 모든 디렉토리 생성 완료
+
+
+Step 0.3: 기존 코드 백업
+-----------------------
+수정할 파일들을 백업합니다.
+
+$ cd /home/dyros/IsaacLab
+
+# 백업 디렉토리 생성
+$ mkdir -p backups/original_code
+
+# 주요 파일 백업
+$ cp source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/dexsuite_env_cfg.py \
+   backups/original_code/
+
+$ cp source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/mdp/rewards.py \
+   backups/original_code/
+
+$ cp source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/config/hdr_dg5f_new/agents/rl_games_ppo_cfg.yaml \
+   backups/original_code/
+
+✅ 체크포인트:
+- backups/original_code/ 디렉토리에 3개 파일 백업됨
+
+
+Step 0.4: Git branch 생성 (선택사항)
+-----------------------------------
+$ cd /home/dyros/IsaacLab
+$ git checkout -b motion-planning-bootstrap
+$ git add .
+$ git commit -m "Initial commit for motion planning bootstrap project"
+
+✅ 체크포인트:
+- 새로운 branch 생성됨
+
+
+================================================================================
+📅 WEEK 1: Demonstration 생성 (Isaac Sim + MoveIt2)
+================================================================================
+
+목표: MoveIt2 motion planner를 사용하여 자동으로 1000개 demonstrations 생성
+
+**중요:** Week 1은 가장 기술적으로 도전적인 주입니다. 통합이 복잡할 경우
+         Fallback Plan을 사용합니다.
+
+--------------------------------------------------------------------------------
+Day 1-2: Isaac Sim + ROS 2 + MoveIt2 환경 설정
+--------------------------------------------------------------------------------
+
+Step 1.1: ROS 2 설치 확인
+------------------------
+$ which ros2
+# 출력 예: /opt/ros/humble/bin/ros2
+
+# ROS 2가 없으면 설치
+$ sudo apt update
+$ sudo apt install ros-humble-desktop
+$ source /opt/ros/humble/setup.bash
+
+✅ 체크포인트:
+- ROS 2 Humble 설치 완료
+- ros2 명령어 실행 가능
+
+
+Step 1.2: Isaac Sim 실행 및 ROS 2 Bridge 테스트
+----------------------------------------------
+NVIDIA 공식 튜토리얼 따름:
+https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+
+# Isaac Sim 실행
+$ cd ~/.local/share/ov/pkg/isaac-sim-*
+$ ./isaac-sim.sh
+
+# GUI에서:
+# Window -> Extensions -> Isaac ROS Bridge 활성화
+
+✅ 체크포인트:
+- Isaac Sim이 정상적으로 실행됨
+- ROS 2 Bridge extension이 활성화됨
+
+
+Step 1.3: 로봇 URDF/USD 파일 준비
+--------------------------------
+Isaac Lab의 로봇 정의를 Isaac Sim으로 복사합니다.
+
+# HDR20-DG5F URDF/USD 확인
+$ ls /home/dyros/IsaacLab/source/isaaclab_assets/isaaclab_assets/robots/
+# 출력: hdr20_dg5f.py, uh035_inspire_left.py
+
+# 로봇 asset 위치 확인
+$ python -c "
+from isaaclab_assets.robots import HDR20_DG5F_CFG
+print(HDR20_DG5F_CFG.prim_path)
+print(HDR20_DG5F_CFG.spawn.usd_path)
+"
+
+✅ 체크포인트:
+- 로봇 USD/URDF 경로 확인됨
+
+
+Step 1.4: MoveIt2 설치 및 설정
+-----------------------------
+$ sudo apt install ros-humble-moveit
+$ sudo apt install ros-humble-moveit-servo
+
+# MoveIt2 config 생성
+$ cd /home/dyros/IsaacLab/scripts/week1_isaac_sim
+$ mkdir -p moveit2_config/{hdr20_dg5f,uh035_inspire}
+
+# MoveIt2 Setup Assistant 실행 (GUI)
+$ ros2 launch moveit_setup_assistant setup_assistant.launch.py
+
+# TODO: 로봇 URDF를 load하고 planning group 설정
+#   - Arm: 6 joints (shoulder ~ wrist)
+#   - Hand: 20 joints (finger joints)
+#   - 전체: arm + hand
+
+✅ 체크포인트:
+- MoveIt2 config 파일 생성됨 (.srdf, .yaml)
+
+
+--------------------------------------------------------------------------------
+Day 3-4: Demonstration 생성 파이프라인 구축
+--------------------------------------------------------------------------------
+
+Step 1.5: Isaac Sim에서 MoveIt2 연동 스크립트 작성
+-------------------------------------------------
+파일: /home/dyros/IsaacLab/scripts/week1_isaac_sim/demo_generator.py
+
+```python
+#!/usr/bin/env python3
+"""
+Demonstration Generator using Isaac Sim + MoveIt2
+
+이 스크립트는:
+1. Isaac Sim에서 로봇과 물체를 spawn
+2. 목표 pose를 무작위로 샘플링
+3. MoveIt2로 motion planning
+4. 궤적을 실행하고 기록
+5. Isaac Lab format으로 저장
+"""
+
+import omni
+import numpy as np
+from omni.isaac.kit import SimulationApp
+import rclpy
+from moveit_msgs.srv import GetMotionPlan
+
+class DemoGenerator:
+    def __init__(self, robot_name="hdr20_dg5f"):
+        self.robot_name = robot_name
+        self.sim_app = SimulationApp({"headless": True})
+
+        # ROS 2 초기화
+        rclpy.init()
+        self.node = rclpy.create_node('demo_generator')
+
+        # MoveIt2 service client
+        self.plan_client = self.node.create_client(
+            GetMotionPlan,
+            '/plan_kinematic_path'
+        )
+
+        # 데이터 저장 경로
+        self.save_dir = f"/home/dyros/IsaacLab/demos/{robot_name}/raw"
+
+    def generate_target_pose(self):
+        """무작위 목표 pose 생성"""
+        # 물체 위치 주변에 목표 생성
+        x = np.random.uniform(0.3, 0.5)
+        y = np.random.uniform(-0.2, 0.2)
+        z = np.random.uniform(0.1, 0.3)
+        return [x, y, z]
+
+    def plan_trajectory(self, target_pose):
+        """MoveIt2로 궤적 계획"""
+        request = GetMotionPlan.Request()
+        # TODO: target_pose를 request에 설정
+
+        future = self.plan_client.call_async(request)
+        rclpy.spin_until_future_complete(self.node, future)
+
+        if future.result().motion_plan_response.error_code.val == 1:
+            return future.result().motion_plan_response.trajectory
+        else:
+            return None
+
+    def execute_and_record(self, trajectory):
+        """궤적을 실행하고 state-action pairs 기록"""
+        states = []
+        actions = []
+
+        # TODO: Isaac Sim에서 궤적 실행하면서 기록
+
+        return states, actions
+
+    def save_demo(self, states, actions, demo_id):
+        """Demonstration 저장"""
+        np.savez(
+            f"{self.save_dir}/demo_{demo_id:04d}.npz",
+            states=np.array(states),
+            actions=np.array(actions)
+        )
+
+    def generate_demos(self, num_demos=1000):
+        """주요 루프: num_demos개 생성"""
+        success_count = 0
+
+        for i in range(num_demos):
+            print(f"Generating demo {i+1}/{num_demos}...")
+
+            # 목표 샘플링
+            target_pose = self.generate_target_pose()
+
+            # Motion planning
+            trajectory = self.plan_trajectory(target_pose)
+            if trajectory is None:
+                print(f"  Planning failed, skipping...")
+                continue
+
+            # 실행 및 기록
+            states, actions = self.execute_and_record(trajectory)
+
+            # 저장
+            self.save_demo(states, actions, success_count)
+            success_count += 1
+
+            if success_count % 100 == 0:
+                print(f"✓ {success_count} demos generated successfully")
+
+        print(f"\n✅ Total: {success_count}/{num_demos} demos generated")
+
+if __name__ == "__main__":
+    generator = DemoGenerator(robot_name="hdr20_dg5f")
+    generator.generate_demos(num_demos=1000)
+```
+
+✅ 체크포인트:
+- demo_generator.py 작성 완료
+- 스크립트 구조 확인
+
+
+Step 1.6: Fallback Plan - 수동 demonstration 또는 synthetic data
+----------------------------------------------------------------
+MoveIt2 통합이 복잡할 경우 대안:
+
+**Option A: Isaac Sim RMPflow planner 사용**
+Isaac Sim 내장 motion planner 사용 (MoveIt2보다 간단)
+
+```python
+from omni.isaac.motion_generation import RmpFlow
+
+rmp = RmpFlow(robot_description_path="...")
+trajectory = rmp.compute_trajectory(target_pose)
+```
+
+**Option B: Synthetic smooth trajectories**
+Cubic spline으로 부드러운 궤적 생성
+
+```python
+from scipy.interpolate import CubicSpline
+
+def generate_synthetic_trajectory(start, goal, duration=5.0, dt=0.01):
+    """부드러운 궤적 생성"""
+    t = np.arange(0, duration, dt)
+    waypoints = np.linspace(start, goal, 10)
+    cs = CubicSpline(np.linspace(0, duration, 10), waypoints)
+    return cs(t)
+```
+
+**Option C: Teleoperation 데이터**
+실제 원격 조작으로 100-200개 demos 수집 (최소한의 데이터)
+
+✅ 결정:
+- Day 4까지 MoveIt2 통합 실패 시 Option A (RMPflow) 사용
+
+
+--------------------------------------------------------------------------------
+Day 5-7: Demonstration 데이터 처리 및 검증
+--------------------------------------------------------------------------------
+
+Step 1.7: Isaac Lab format으로 변환
+----------------------------------
+파일: /home/dyros/IsaacLab/scripts/week1_isaac_sim/convert_to_isaaclab.py
+
+```python
+#!/usr/bin/env python3
+"""
+Isaac Sim demonstration을 Isaac Lab format으로 변환
+"""
+
+import numpy as np
+import h5py
+from pathlib import Path
+
+def convert_demo(demo_path, output_path):
+    """
+    Isaac Lab format:
+    {
+        'observations': {
+            'policy': [...],      # robot joint pos/vel
+            'proprio': [...],     # fingertip poses, contact
+        },
+        'actions': [...],         # joint position commands
+        'rewards': [...],
+        'dones': [...]
+    }
+    """
+    # Load raw demo
+    data = np.load(demo_path)
+    states = data['states']
+    actions = data['actions']
+
+    # Convert to Isaac Lab format
+    num_steps = len(states)
+
+    observations = {
+        'policy': np.zeros((num_steps, 64)),  # TODO: 정확한 dim
+        'proprio': np.zeros((num_steps, 128))
+    }
+
+    # TODO: states -> observations 변환
+
+    # Save as HDF5
+    with h5py.File(output_path, 'w') as f:
+        obs_grp = f.create_group('observations')
+        obs_grp.create_dataset('policy', data=observations['policy'])
+        obs_grp.create_dataset('proprio', data=observations['proprio'])
+        f.create_dataset('actions', data=actions)
+        f.create_dataset('rewards', data=np.zeros(num_steps))
+        f.create_dataset('dones', data=np.zeros(num_steps, dtype=bool))
+
+    print(f"✓ Converted: {output_path}")
+
+def convert_all_demos(robot_name="hdr20_dg5f"):
+    raw_dir = Path(f"/home/dyros/IsaacLab/demos/{robot_name}/raw")
+    processed_dir = Path(f"/home/dyros/IsaacLab/demos/{robot_name}/processed")
+
+    demo_files = sorted(raw_dir.glob("demo_*.npz"))
+    print(f"Found {len(demo_files)} demos to convert")
+
+    for demo_file in demo_files:
+        output_file = processed_dir / f"{demo_file.stem}.h5"
+        convert_demo(demo_file, output_file)
+
+    print(f"\n✅ Converted {len(demo_files)} demos")
+
+if __name__ == "__main__":
+    convert_all_demos("hdr20_dg5f")
+    convert_all_demos("uh035_inspire")
+```
+
+실행:
+$ cd /home/dyros/IsaacLab
+$ python scripts/week1_isaac_sim/convert_to_isaaclab.py
+
+✅ 체크포인트:
+- demos/hdr20_dg5f/processed/에 .h5 파일들 생성됨
+- demos/uh035_inspire/processed/에 .h5 파일들 생성됨
+
+
+Step 1.8: Demonstration 품질 검증
+--------------------------------
+파일: /home/dyros/IsaacLab/scripts/week1_isaac_sim/validate_demos.py
+
+```python
+#!/usr/bin/env python3
+"""Demonstration 품질 검증"""
+
+import h5py
+import numpy as np
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+def validate_demo(demo_path):
+    """단일 demo 검증"""
+    with h5py.File(demo_path, 'r') as f:
+        actions = f['actions'][:]
+
+        # 체크 1: Action bounds
+        if np.any(np.abs(actions) > 10.0):
+            return False, "Action out of bounds"
+
+        # 체크 2: 부드러운 궤적 (acceleration check)
+        diff = np.diff(actions, axis=0)
+        if np.max(np.abs(diff)) > 1.0:
+            return False, "Trajectory not smooth"
+
+        # 체크 3: 길이 체크
+        if len(actions) < 10 or len(actions) > 1000:
+            return False, f"Invalid length: {len(actions)}"
+
+    return True, "OK"
+
+def validate_all_demos(robot_name="hdr20_dg5f"):
+    processed_dir = Path(f"/home/dyros/IsaacLab/demos/{robot_name}/processed")
+    demo_files = sorted(processed_dir.glob("*.h5"))
+
+    valid_count = 0
+    invalid_demos = []
+
+    for demo_file in demo_files:
+        is_valid, msg = validate_demo(demo_file)
+        if is_valid:
+            valid_count += 1
+        else:
+            invalid_demos.append((demo_file.name, msg))
+
+    print(f"\n{'='*60}")
+    print(f"Validation Results for {robot_name}")
+    print(f"{'='*60}")
+    print(f"Total demos: {len(demo_files)}")
+    print(f"Valid demos: {valid_count}")
+    print(f"Invalid demos: {len(invalid_demos)}")
+
+    if invalid_demos:
+        print(f"\nInvalid demos:")
+        for name, reason in invalid_demos[:10]:  # 처음 10개만 표시
+            print(f"  - {name}: {reason}")
+
+    # 통계 시각화
+    visualize_demo_statistics(processed_dir)
+
+    return valid_count >= 800  # 최소 800개 필요
+
+def visualize_demo_statistics(demo_dir):
+    """Demo 통계 시각화"""
+    demo_files = sorted(demo_dir.glob("*.h5"))
+    lengths = []
+
+    for demo_file in demo_files[:100]:  # 샘플 100개만
+        with h5py.File(demo_file, 'r') as f:
+            lengths.append(len(f['actions']))
+
+    plt.figure(figsize=(10, 5))
+    plt.hist(lengths, bins=30)
+    plt.xlabel('Trajectory Length (steps)')
+    plt.ylabel('Count')
+    plt.title('Distribution of Demonstration Lengths')
+    plt.savefig(f'{demo_dir}/demo_statistics.png')
+    print(f"✓ Saved statistics plot: {demo_dir}/demo_statistics.png")
+
+if __name__ == "__main__":
+    valid_hdr = validate_all_demos("hdr20_dg5f")
+    valid_uh035 = validate_all_demos("uh035_inspire")
+
+    if valid_hdr and valid_uh035:
+        print("\n✅ Week 1 완료! Demonstrations 준비됨")
+    else:
+        print("\n⚠️ Warning: 일부 demos가 유효하지 않습니다")
+```
+
+실행:
+$ python scripts/week1_isaac_sim/validate_demos.py
+
+✅ 체크포인트:
+- 최소 800개 이상의 valid demos (로봇당)
+- demo_statistics.png 생성됨
+
+
+Step 1.9: Week 1 완료 체크리스트
+-------------------------------
+□ MoveIt2 또는 RMPflow 통합 완료
+□ HDR20-DG5F: 800+ demos 생성
+□ UH035-Inspire: 800+ demos 생성
+□ Isaac Lab format으로 변환 완료
+□ Validation 통과
+□ Statistics plot 생성
+
+❌ Week 1 실패 시 대안:
+- Synthetic trajectories (Option B) 사용
+- Week 2로 이동하고 Week 1은 병렬로 진행
+
+
+================================================================================
+📅 WEEK 2: Contact-Aware Rewards 구현
+================================================================================
+
+목표: 접촉 기반 보상 항 3개 구현 및 검증
+
+**주요 파일:**
+- dexsuite_env_cfg.py: reward terms 정의
+- mdp/rewards.py: reward functions 구현
+
+--------------------------------------------------------------------------------
+Day 8-9: Contact Gating Reward 구현
+--------------------------------------------------------------------------------
+
+Step 2.1: 기존 reward 구조 분석
+------------------------------
+$ cd /home/dyros/IsaacLab
+$ cat source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/dexsuite_env_cfg.py | grep -A 50 "reward_terms"
+
+# 출력: 기존 reward terms 확인
+#   - reaching_object
+#   - lifting_object
+#   - object_goal_tracking
+#   등등...
+
+✅ 체크포인트:
+- 기존 rewards 구조 파악
+
+
+Step 2.2: Contact sensor 데이터 확인
+-----------------------------------
+파일: /home/dyros/IsaacLab/scripts/week2_rewards/test_contact_sensors.py
+
+```python
+#!/usr/bin/env python3
+"""Contact sensor 데이터 확인"""
+
+import torch
+from isaaclab.app import AppLauncher
+app = AppLauncher().app
+
+from isaaclab_tasks.manager_based.manipulation.dexsuite_hdr import DexsuiteEnvCfg
+
+def test_contact_sensors():
+    env_cfg = DexsuiteEnvCfg()
+    env = env_cfg.create_env(num_envs=4)
+
+    env.reset()
+
+    # 10 steps 실행
+    for i in range(10):
+        actions = torch.randn(4, env.num_actions, device=env.device)
+        obs, rewards, dones, info = env.step(actions)
+
+        # Contact forces 확인
+        if hasattr(env, 'contact_forces'):
+            contact_forces = env.contact_forces
+            print(f"Step {i}: Contact forces shape: {contact_forces.shape}")
+            print(f"  Max force: {contact_forces.max().item():.4f}")
+            print(f"  Mean force: {contact_forces.mean().item():.4f}")
+
+    print("\n✅ Contact sensors are working!")
+
+if __name__ == "__main__":
+    test_contact_sensors()
+```
+
+실행:
+$ python scripts/week2_rewards/test_contact_sensors.py
+
+✅ 체크포인트:
+- Contact sensor 데이터 접근 가능
+- Force 값이 합리적
+
+
+Step 2.3: Contact Gating Reward 구현
+------------------------------------
+파일 수정: source/isaaclab_tasks/.../dexsuite_hdr/mdp/rewards.py
+
+```python
+def contact_gated_tracking(
+    env,
+    threshold: float = 0.1
+) -> torch.Tensor:
+    """
+    위치 추적 보상을 손가락-물체 접촉이 있을 때만 활성화
+
+    Args:
+        env: Environment instance
+        threshold: 최소 contact force (N)
+
+    Returns:
+        Gated reward tensor [num_envs]
+    """
+    # 1. 기존 tracking reward 계산
+    object_pos = env.object.data.root_pos_w - env.scene.env_origins
+    goal_pos = env.command_manager.get_command("object_pose")[:, :3]
+    distance = torch.norm(object_pos - goal_pos, dim=-1)
+    tracking_reward = 1.0 - torch.tanh(distance / 0.1)
+
+    # 2. Contact 감지
+    contact_forces = env.contact_sensor.data.net_forces_w_history
+    fingertip_forces = contact_forces[:, env.fingertip_body_ids, :, :]  # [num_envs, num_fingers, 3, history]
+
+    # 각 손가락의 최대 force
+    max_finger_forces = torch.max(
+        torch.norm(fingertip_forces, dim=2),  # [num_envs, num_fingers, history]
+        dim=-1
+    )[0]  # [num_envs, num_fingers]
+
+    # 최소 1개 손가락이 접촉 중인가?
+    any_contact = torch.any(max_finger_forces > threshold, dim=-1)  # [num_envs]
+
+    # 3. Gating 적용
+    gated_reward = tracking_reward * any_contact.float()
+
+    return gated_reward
+```
+
+✅ 체크포인트:
+- contact_gated_tracking 함수 구현 완료
+
+
+Step 2.4: dexsuite_env_cfg.py에 reward term 추가
+------------------------------------------------
+파일 수정: source/isaaclab_tasks/.../dexsuite_hdr/dexsuite_env_cfg.py
+
+기존 RewardsCfg 클래스 찾기:
+$ grep -n "class.*RewardsCfg" dexsuite_env_cfg.py
+
+수정:
+```python
+@configclass
+class RewardsCfg:
+    """Reward terms for the MDP."""
+
+    # ... 기존 rewards ...
+
+    # [NEW] Contact-gated tracking
+    contact_gated_tracking = RewTerm(
+        func=mdp.contact_gated_tracking,
+        weight=2.0,  # 강한 weight
+        params={"threshold": 0.1}
+    )
+```
+
+✅ 체크포인트:
+- RewardsCfg에 새 항목 추가 완료
+
+
+--------------------------------------------------------------------------------
+Day 10: Grasp Duration Reward 구현
+--------------------------------------------------------------------------------
+
+Step 2.5: Grasp Duration Reward 구현
+------------------------------------
+파일 수정: source/isaaclab_tasks/.../dexsuite_hdr/mdp/rewards.py
+
+```python
+def grasp_duration(
+    env,
+    min_duration: int = 10,  # 최소 지속 스텝
+    force_threshold: float = 0.1
+) -> torch.Tensor:
+    """
+    지속적인 다중 손가락 접촉에 대한 보상
+
+    Args:
+        env: Environment instance
+        min_duration: 최소 지속 timesteps
+        force_threshold: 접촉으로 간주할 최소 force
+
+    Returns:
+        Reward tensor [num_envs]
+    """
+    # Contact history 사용 (최근 min_duration steps)
+    contact_forces = env.contact_sensor.data.net_forces_w_history  # [num_envs, num_bodies, 3, history_length]
+
+    # Fingertip forces만 추출
+    fingertip_forces = contact_forces[:, env.fingertip_body_ids, :, -min_duration:]  # 최근 min_duration steps
+
+    # 각 timestep에서 접촉 여부 [num_envs, num_fingers, min_duration]
+    finger_norms = torch.norm(fingertip_forces, dim=2)  # [num_envs, num_fingers, min_duration]
+    is_contact = finger_norms > force_threshold  # Boolean
+
+    # 몇 개 손가락이 전체 duration 동안 접촉했는가?
+    sustained_contact = torch.all(is_contact, dim=-1)  # [num_envs, num_fingers]
+    num_sustained_fingers = sustained_contact.float().sum(dim=-1)  # [num_envs]
+
+    # 보상: 지속적으로 접촉한 손가락 수에 비례
+    reward = num_sustained_fingers / 5.0  # Normalize by total fingers (5)
+
+    return reward
+```
+
+파일 수정: dexsuite_env_cfg.py
+```python
+@configclass
+class RewardsCfg:
+    # ... 기존 rewards ...
+
+    # [NEW] Grasp duration
+    grasp_duration = RewTerm(
+        func=mdp.grasp_duration,
+        weight=1.0,
+        params={"min_duration": 10, "force_threshold": 0.1}
+    )
+```
+
+✅ 체크포인트:
+- grasp_duration reward 구현 완료
+
+
+--------------------------------------------------------------------------------
+Day 11: Ground Contact Penalty 구현
+--------------------------------------------------------------------------------
+
+Step 2.6: Ground Contact Penalty 구현
+-------------------------------------
+파일 수정: source/isaaclab_tasks/.../dexsuite_hdr/mdp/rewards.py
+
+```python
+def ground_contact_penalty(
+    env,
+    penalty_scale: float = 1.0
+) -> torch.Tensor:
+    """
+    물체-바닥 접촉에 대한 벌점
+
+    Args:
+        env: Environment instance
+        penalty_scale: 벌점 스케일
+
+    Returns:
+        Penalty tensor [num_envs] (negative values)
+    """
+    # 물체의 contact forces
+    object_contact = env.contact_sensor.data.net_forces_w[:, env.object_body_id, :]  # [num_envs, 3]
+
+    # Z 방향 (위쪽) force가 크면 바닥과 충돌
+    upward_force = object_contact[:, 2]  # [num_envs]
+
+    # 충돌 감지 (upward force > threshold)
+    is_ground_contact = upward_force > 1.0  # 1N 이상
+
+    # 벌점 (negative reward)
+    penalty = -penalty_scale * is_ground_contact.float()
+
+    return penalty
+```
+
+파일 수정: dexsuite_env_cfg.py
+```python
+@configclass
+class RewardsCfg:
+    # ... 기존 rewards ...
+
+    # [NEW] Ground contact penalty
+    ground_contact_penalty = RewTerm(
+        func=mdp.ground_contact_penalty,
+        weight=0.5,  # 작은 weight (이미 negative)
+        params={"penalty_scale": 1.0}
+    )
+```
+
+✅ 체크포인트:
+- ground_contact_penalty 구현 완료
+
+
+--------------------------------------------------------------------------------
+Day 12-14: Reward 검증 및 튜닝
+--------------------------------------------------------------------------------
+
+Step 2.7: 단일 환경에서 reward 테스트
+-------------------------------------
+파일: /home/dyros/IsaacLab/scripts/week2_rewards/test_rewards.py
+
+```python
+#!/usr/bin/env python3
+"""새로운 rewards 테스트"""
+
+import torch
+import matplotlib.pyplot as plt
+from isaaclab.app import AppLauncher
+app = AppLauncher().app
+
+from isaaclab_tasks.manager_based.manipulation.dexsuite_hdr import DexsuiteEnvCfg
+
+def test_rewards():
+    env_cfg = DexsuiteEnvCfg()
+    env = env_cfg.create_env(num_envs=1, render=True)  # GUI로 확인
+
+    # Reset
+    obs = env.reset()
+
+    # 데이터 수집
+    rewards_history = {
+        'contact_gated': [],
+        'grasp_duration': [],
+        'ground_penalty': [],
+        'total': []
+    }
+
+    print("Running 500 steps...")
+    for step in range(500):
+        # Random actions
+        actions = torch.randn(1, env.num_actions, device=env.device) * 0.1
+
+        obs, rewards, dones, info = env.step(actions)
+
+        # Reward breakdown 기록
+        if 'reward_breakdown' in info:
+            breakdown = info['reward_breakdown']
+            rewards_history['contact_gated'].append(breakdown['contact_gated_tracking'].item())
+            rewards_history['grasp_duration'].append(breakdown['grasp_duration'].item())
+            rewards_history['ground_penalty'].append(breakdown['ground_contact_penalty'].item())
+            rewards_history['total'].append(rewards.item())
+
+        if step % 100 == 0:
+            print(f"Step {step}: Total reward = {rewards.item():.4f}")
+
+    # 시각화
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+    axes[0,0].plot(rewards_history['contact_gated'])
+    axes[0,0].set_title('Contact Gated Tracking')
+    axes[0,0].set_ylabel('Reward')
+
+    axes[0,1].plot(rewards_history['grasp_duration'])
+    axes[0,1].set_title('Grasp Duration')
+
+    axes[1,0].plot(rewards_history['ground_penalty'])
+    axes[1,0].set_title('Ground Contact Penalty')
+    axes[1,0].set_ylabel('Reward')
+    axes[1,0].set_xlabel('Step')
+
+    axes[1,1].plot(rewards_history['total'])
+    axes[1,1].set_title('Total Reward')
+    axes[1,1].set_xlabel('Step')
+
+    plt.tight_layout()
+    plt.savefig('/home/dyros/IsaacLab/results/week2_rewards/reward_breakdown.png')
+    print(f"\n✓ Saved plot: results/week2_rewards/reward_breakdown.png")
+
+    env.close()
+
+if __name__ == "__main__":
+    test_rewards()
+```
+
+실행:
+$ python scripts/week2_rewards/test_rewards.py
+
+✅ 체크포인트:
+- Reward가 합리적인 범위 (-10 ~ 10)
+- Contact gating이 작동함 (접촉 시에만 reward 증가)
+- Ground penalty가 작동함 (물체가 떨어질 때 negative)
+
+
+Step 2.8: Reward weight 튜닝
+----------------------------
+dexsuite_env_cfg.py에서 weight 조정:
+
+시도해볼 weight 조합:
+```python
+# Variant 1: Balanced
+contact_gated_tracking.weight = 2.0
+grasp_duration.weight = 1.0
+ground_contact_penalty.weight = 0.5
+
+# Variant 2: Contact-heavy
+contact_gated_tracking.weight = 3.0
+grasp_duration.weight = 2.0
+ground_contact_penalty.weight = 1.0
+
+# Variant 3: Conservative
+contact_gated_tracking.weight = 1.0
+grasp_duration.weight = 0.5
+ground_contact_penalty.weight = 0.2
+```
+
+각 variant로 50 episodes 실행하여 비교
+
+✅ 체크포인트:
+- 최적 weight 조합 선택 완료
+
+
+Step 2.9: Week 2 완료 체크리스트
+-------------------------------
+□ Contact gated tracking reward 구현
+□ Grasp duration reward 구현
+□ Ground contact penalty 구현
+□ 단일 환경 테스트 통과
+□ Reward weights 튜닝 완료
+□ reward_breakdown.png 생성
+
+✅ Week 2 완료!
+
+
+================================================================================
+📅 WEEK 3: Behavior Cloning (BC) Pre-training
+================================================================================
+
+목표: Week 1에서 생성한 demonstrations로 policy를 pre-train
+
+**핵심 파일:**
+- scripts/week3_bc/bc_trainer.py
+- scripts/week3_bc/bc_model.py
+
+--------------------------------------------------------------------------------
+Day 15-17: BC Training Loop 구현
+--------------------------------------------------------------------------------
+
+Step 3.1: BC 모델 정의
+---------------------
+파일: /home/dyros/IsaacLab/scripts/week3_bc/bc_model.py
+
+```python
+#!/usr/bin/env python3
+"""Behavior Cloning Policy Network"""
+
+import torch
+import torch.nn as nn
+
+class BCPolicy(nn.Module):
+    """
+    Behavior Cloning을 위한 policy network
+
+    Input: observations (joint pos/vel, object pose, goal pose)
+    Output: actions (joint position commands)
+    """
+    def __init__(
+        self,
+        obs_dim: int,
+        action_dim: int,
+        hidden_dims: list = [256, 256, 128]
+    ):
+        super().__init__()
+
+        layers = []
+        prev_dim = obs_dim
+
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(prev_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.LayerNorm(hidden_dim))
+            prev_dim = hidden_dim
+
+        layers.append(nn.Linear(prev_dim, action_dim))
+        layers.append(nn.Tanh())  # Action range [-1, 1]
+
+        self.network = nn.Sequential(*layers)
+
+    def forward(self, obs):
+        return self.network(obs)
+```
+
+✅ 체크포인트:
+- BCPolicy 모델 정의 완료
+
+
+Step 3.2: Demo dataset loader 구현
+----------------------------------
+파일: /home/dyros/IsaacLab/scripts/week3_bc/demo_dataset.py
+
+```python
+#!/usr/bin/env python3
+"""Demonstration dataset for BC training"""
+
+import h5py
+import torch
+from torch.utils.data import Dataset, DataLoader
+from pathlib import Path
+
+class DemoDataset(Dataset):
+    """
+    Demonstration dataset
+
+    각 demo는 (state, action) pairs의 sequence
+    """
+    def __init__(self, demo_dir: str, robot_name: str = "hdr20_dg5f"):
+        self.demo_dir = Path(demo_dir) / robot_name / "processed"
+        self.demo_files = sorted(self.demo_dir.glob("*.h5"))
+
+        print(f"Loading {len(self.demo_files)} demos from {self.demo_dir}")
+
+        # 모든 demos를 메모리에 로드 (작은 데이터셋이므로 가능)
+        self.states = []
+        self.actions = []
+
+        for demo_file in self.demo_files:
+            with h5py.File(demo_file, 'r') as f:
+                obs = f['observations']['policy'][:]
+                acts = f['actions'][:]
+
+                self.states.append(torch.from_numpy(obs).float())
+                self.actions.append(torch.from_numpy(acts).float())
+
+        # Concatenate all demos
+        self.states = torch.cat(self.states, dim=0)
+        self.actions = torch.cat(self.actions, dim=0)
+
+        print(f"Total samples: {len(self.states)}")
+        print(f"State dim: {self.states.shape[1]}")
+        print(f"Action dim: {self.actions.shape[1]}")
+
+    def __len__(self):
+        return len(self.states)
+
+    def __getitem__(self, idx):
+        return self.states[idx], self.actions[idx]
+
+def create_dataloaders(
+    demo_dir: str,
+    robot_name: str,
+    train_split: float = 0.9,
+    batch_size: int = 256
+):
+    """Train/val dataloaders 생성"""
+    dataset = DemoDataset(demo_dir, robot_name)
+
+    # Train/val split
+    train_size = int(len(dataset) * train_split)
+    val_size = len(dataset) - train_size
+
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        dataset, [train_size, val_size]
+    )
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4
+    )
+
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=2
+    )
+
+    return train_loader, val_loader
+```
+
+✅ 체크포인트:
+- DemoDataset 구현 완료
+
+
+Step 3.3: BC Trainer 구현
+-------------------------
+파일: /home/dyros/IsaacLab/scripts/week3_bc/bc_trainer.py
+
+```python
+#!/usr/bin/env python3
+"""Behavior Cloning Trainer"""
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from pathlib import Path
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+from bc_model import BCPolicy
+from demo_dataset import create_dataloaders
+
+class BCTrainer:
+    def __init__(
+        self,
+        robot_name: str = "hdr20_dg5f",
+        obs_dim: int = 64,  # TODO: 정확한 dim
+        action_dim: int = 26,  # HDR20-DG5F: 26 DOF
+        learning_rate: float = 3e-4,
+        device: str = "cuda"
+    ):
+        self.robot_name = robot_name
+        self.device = torch.device(device)
+
+        # Model
+        self.policy = BCPolicy(obs_dim, action_dim).to(self.device)
+        print(f"Model parameters: {sum(p.numel() for p in self.policy.parameters()):,}")
+
+        # Optimizer
+        self.optimizer = optim.Adam(self.policy.parameters(), lr=learning_rate)
+
+        # Loss
+        self.criterion = nn.MSELoss()
+
+        # Dataloaders
+        self.train_loader, self.val_loader = create_dataloaders(
+            demo_dir="/home/dyros/IsaacLab/demos",
+            robot_name=robot_name,
+            batch_size=256
+        )
+
+        # Logging
+        self.train_losses = []
+        self.val_losses = []
+
+    def train_epoch(self):
+        """1 epoch 훈련"""
+        self.policy.train()
+        total_loss = 0.0
+
+        for states, actions in tqdm(self.train_loader, desc="Training"):
+            states = states.to(self.device)
+            actions = actions.to(self.device)
+
+            # Forward
+            pred_actions = self.policy(states)
+            loss = self.criterion(pred_actions, actions)
+
+            # Backward
+            self.optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1.0)
+            self.optimizer.step()
+
+            total_loss += loss.item()
+
+        return total_loss / len(self.train_loader)
+
+    def validate(self):
+        """Validation"""
+        self.policy.eval()
+        total_loss = 0.0
+
+        with torch.no_grad():
+            for states, actions in self.val_loader:
+                states = states.to(self.device)
+                actions = actions.to(self.device)
+
+                pred_actions = self.policy(states)
+                loss = self.criterion(pred_actions, actions)
+
+                total_loss += loss.item()
+
+        return total_loss / len(self.val_loader)
+
+    def train(self, num_epochs: int = 50):
+        """전체 훈련 루프"""
+        print(f"\n{'='*60}")
+        print(f"Training BC Policy for {self.robot_name}")
+        print(f"{'='*60}")
+        print(f"Epochs: {num_epochs}")
+        print(f"Train batches: {len(self.train_loader)}")
+        print(f"Val batches: {len(self.val_loader)}")
+        print(f"{'='*60}\n")
+
+        best_val_loss = float('inf')
+        patience = 10
+        patience_counter = 0
+
+        for epoch in range(num_epochs):
+            train_loss = self.train_epoch()
+            val_loss = self.validate()
+
+            self.train_losses.append(train_loss)
+            self.val_losses.append(val_loss)
+
+            print(f"Epoch {epoch+1}/{num_epochs}")
+            print(f"  Train Loss: {train_loss:.6f}")
+            print(f"  Val Loss:   {val_loss:.6f}")
+
+            # Early stopping
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                patience_counter = 0
+                self.save_checkpoint(epoch, val_loss, is_best=True)
+            else:
+                patience_counter += 1
+
+            if patience_counter >= patience:
+                print(f"\nEarly stopping at epoch {epoch+1}")
+                break
+
+            # Regular checkpoint
+            if (epoch + 1) % 10 == 0:
+                self.save_checkpoint(epoch, val_loss, is_best=False)
+
+        # Plot training curve
+        self.plot_training_curve()
+
+        print(f"\n✅ Training completed!")
+        print(f"Best validation loss: {best_val_loss:.6f}")
+
+    def save_checkpoint(self, epoch, val_loss, is_best=False):
+        """모델 저장"""
+        save_dir = Path(f"/home/dyros/IsaacLab/results/week3_bc/{self.robot_name}")
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': self.policy.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'val_loss': val_loss,
+            'train_losses': self.train_losses,
+            'val_losses': self.val_losses
+        }
+
+        if is_best:
+            save_path = save_dir / "bc_policy_best.pth"
+            print(f"  → Saved best model: {save_path}")
+        else:
+            save_path = save_dir / f"bc_policy_epoch{epoch+1}.pth"
+
+        torch.save(checkpoint, save_path)
+
+    def plot_training_curve(self):
+        """Training curve 시각화"""
+        plt.figure(figsize=(10, 5))
+        plt.plot(self.train_losses, label='Train Loss')
+        plt.plot(self.val_losses, label='Val Loss')
+        plt.xlabel('Epoch')
+        plt.ylabel('MSE Loss')
+        plt.title(f'BC Training Curve - {self.robot_name}')
+        plt.legend()
+        plt.grid(True)
+
+        save_path = f"/home/dyros/IsaacLab/results/week3_bc/{self.robot_name}/training_curve.png"
+        plt.savefig(save_path)
+        print(f"✓ Saved training curve: {save_path}")
+
+if __name__ == "__main__":
+    # HDR20-DG5F
+    trainer_hdr = BCTrainer(
+        robot_name="hdr20_dg5f",
+        obs_dim=64,
+        action_dim=26
+    )
+    trainer_hdr.train(num_epochs=50)
+
+    # UH035-Inspire
+    trainer_uh035 = BCTrainer(
+        robot_name="uh035_inspire",
+        obs_dim=64,
+        action_dim=12
+    )
+    trainer_uh035.train(num_epochs=50)
+```
+
+실행:
+$ cd /home/dyros/IsaacLab
+$ python scripts/week3_bc/bc_trainer.py
+
+예상 실행 시간: 2-3시간 (로봇 2개)
+
+✅ 체크포인트:
+- BC training 완료 (50 epochs)
+- Val loss < 0.01
+- training_curve.png 생성
+
+
+--------------------------------------------------------------------------------
+Day 18-21: BC Policy 검증
+--------------------------------------------------------------------------------
+
+Step 3.4: BC policy를 Isaac Lab에서 테스트
+-----------------------------------------
+파일: /home/dyros/IsaacLab/scripts/week3_bc/test_bc_policy.py
+
+```python
+#!/usr/bin/env python3
+"""BC policy를 Isaac Lab environment에서 테스트"""
+
+import torch
+from isaaclab.app import AppLauncher
+app = AppLauncher().app
+
+from isaaclab_tasks.manager_based.manipulation.dexsuite_hdr import DexsuiteEnvCfg
+from bc_model import BCPolicy
+
+def test_bc_policy(robot_name="hdr20_dg5f"):
+    # Load BC policy
+    checkpoint_path = f"/home/dyros/IsaacLab/results/week3_bc/{robot_name}/bc_policy_best.pth"
+    checkpoint = torch.load(checkpoint_path)
+
+    obs_dim = 64
+    action_dim = 26 if robot_name == "hdr20_dg5f" else 12
+
+    policy = BCPolicy(obs_dim, action_dim)
+    policy.load_state_dict(checkpoint['model_state_dict'])
+    policy.eval()
+    policy.cuda()
+
+    print(f"Loaded BC policy from: {checkpoint_path}")
+    print(f"  Val loss: {checkpoint['val_loss']:.6f}")
+
+    # Create environment
+    env_cfg = DexsuiteEnvCfg()
+    env = env_cfg.create_env(num_envs=16, render=True)
+
+    # Test for 10 episodes
+    num_episodes = 10
+    success_count = 0
+
+    for ep in range(num_episodes):
+        obs = env.reset()
+        done = False
+        step = 0
+
+        while not done and step < 500:
+            # BC policy로 action 생성
+            with torch.no_grad():
+                actions = policy(obs['policy'])
+
+            obs, rewards, dones, info = env.step(actions)
+
+            done = dones.any()
+            step += 1
+
+        # Success check
+        if 'success' in info and info['success'].any():
+            success_count += 1
+
+        print(f"Episode {ep+1}: Steps = {step}, Success = {info.get('success', [False])[0]}")
+
+    success_rate = success_count / num_episodes
+    print(f"\n{'='*60}")
+    print(f"BC Policy Test Results - {robot_name}")
+    print(f"{'='*60}")
+    print(f"Success Rate: {success_rate:.1%} ({success_count}/{num_episodes})")
+    print(f"{'='*60}")
+
+    env.close()
+    return success_rate
+
+if __name__ == "__main__":
+    sr_hdr = test_bc_policy("hdr20_dg5f")
+    sr_uh035 = test_bc_policy("uh035_inspire")
+
+    if sr_hdr > 0.3 and sr_uh035 > 0.3:
+        print("\n✅ BC policies are ready for RL fine-tuning!")
+    else:
+        print("\n⚠️ Warning: BC success rate is low. Consider:")
+        print("  - More demonstrations")
+        print("  - Longer BC training")
+        print("  - Better reward shaping")
+```
+
+실행:
+$ python scripts/week3_bc/test_bc_policy.py
+
+예상 결과:
+- HDR20-DG5F: 30-50% success rate
+- UH035-Inspire: 20-40% success rate
+
+✅ 체크포인트:
+- BC policy가 >30% success rate 달성
+
+
+Step 3.5: Week 3 완료 체크리스트
+-------------------------------
+□ BC model 구현
+□ Demo dataset loader 구현
+□ BC trainer 구현
+□ HDR20-DG5F BC training 완료
+□ UH035-Inspire BC training 완료
+□ BC policy 검증 (>30% success)
+□ Training curves 생성
+
+✅ Week 3 완료!
+
+
+================================================================================
+📅 WEEK 4: RL Training (핵심!)
+================================================================================
+
+목표: 4 variants × 2 robots = 8 experiments 실행
+
+**4 Variants:**
+1. Pure PPO (baseline)
+2. BC + PPO
+3. PPO + Contact-Aware Rewards
+4. BC + PPO + Contact-Aware Rewards (FULL METHOD)
+
+--------------------------------------------------------------------------------
+Day 22-24: RL-Games 수정 및 준비
+--------------------------------------------------------------------------------
+
+Step 4.1: RL-Games config에 BC initialization 추가
+--------------------------------------------------
+파일 위치:
+source/isaaclab_tasks/.../dexsuite_hdr/config/hdr_dg5f_new/agents/rl_games_ppo_cfg.yaml
+
+백업:
+$ cp rl_games_ppo_cfg.yaml rl_games_ppo_cfg.yaml.backup
+
+수정 (BC checkpoint 추가):
+```yaml
+params:
+  seed: 42
+
+  algo:
+    name: a2c_continuous
+
+  model:
+    name: continuous_a2c_logstd
+
+  network:
+    name: actor_critic
+    separate: False
+
+    # [NEW] BC initialization
+    bc_checkpoint: null  # Will be set programmatically
+
+    space:
+      continuous:
+        mu_activation: None
+        sigma_activation: None
+        mu_init:
+          name: default
+        sigma_init:
+          name: const_initializer
+          val: 0
+        fixed_sigma: True
+    mlp:
+      units: [256, 128, 64]
+      activation: elu
+      d2rl: False
+
+      initializer:
+        name: default
+      regularizer:
+        name: None
+
+  # ... (rest of config)
+```
+
+✅ 체크포인트:
+- RL-Games config 수정 완료
+
+
+Step 4.2: BC checkpoint loader 추가
+-----------------------------------
+파일: /home/dyros/IsaacLab/scripts/week4_rl/rl_with_bc_init.py
+
+```python
+#!/usr/bin/env python3
+"""RL training with BC initialization"""
+
+import torch
+from rl_games.torch_runner import Runner
+from pathlib import Path
+
+def load_bc_checkpoint_to_rl_policy(bc_checkpoint_path, rl_agent):
+    """
+    BC checkpoint를 RL agent의 policy network에 로드
+
+    Args:
+        bc_checkpoint_path: BC policy checkpoint path
+        rl_agent: RL-Games agent
+    """
+    print(f"Loading BC checkpoint from: {bc_checkpoint_path}")
+
+    checkpoint = torch.load(bc_checkpoint_path)
+    bc_state_dict = checkpoint['model_state_dict']
+
+    # RL agent의 actor network에 BC weights 복사
+    rl_actor_dict = rl_agent.model.a2c_network.actor.state_dict()
+
+    # BC network의 weights를 RL actor에 매칭
+    for bc_key, rl_key in zip(bc_state_dict.keys(), rl_actor_dict.keys()):
+        if bc_state_dict[bc_key].shape == rl_actor_dict[rl_key].shape:
+            rl_actor_dict[rl_key] = bc_state_dict[bc_key]
+            print(f"  Loaded: {bc_key} -> {rl_key}")
+        else:
+            print(f"  Skipped: {bc_key} (shape mismatch)")
+
+    rl_agent.model.a2c_network.actor.load_state_dict(rl_actor_dict)
+
+    print("✓ BC initialization complete!")
+
+def train_rl_with_bc(
+    variant: str,  # "pure_ppo", "bc_ppo", "ppo_contact", "bc_ppo_contact"
+    robot_name: str = "hdr20_dg5f",
+    num_epochs: int = 5000
+):
+    """
+    RL training with specified variant
+
+    Args:
+        variant: Training variant
+        robot_name: Robot name
+        num_epochs: Training epochs
+    """
+    print(f"\n{'='*70}")
+    print(f"Training: {variant} - {robot_name}")
+    print(f"{'='*70}\n")
+
+    # Config path
+    config_path = f"source/isaaclab_tasks/.../config/{robot_name}/agents/rl_games_ppo_cfg.yaml"
+
+    # Modify config based on variant
+    if "bc" in variant:
+        bc_checkpoint = f"/home/dyros/IsaacLab/results/week3_bc/{robot_name}/bc_policy_best.pth"
+    else:
+        bc_checkpoint = None
+
+    if "contact" in variant:
+        # Contact-aware rewards 활성화
+        enable_contact_rewards = True
+    else:
+        enable_contact_rewards = False
+
+    # Create RL-Games runner
+    runner = Runner()
+    runner.load(config_path)
+
+    # BC initialization (if needed)
+    if bc_checkpoint:
+        load_bc_checkpoint_to_rl_policy(bc_checkpoint, runner.agent)
+
+    # Start training
+    runner.reset()
+    runner.run({
+        'train': True,
+        'play': False,
+        'checkpoint': None,
+        'sigma': None
+    })
+
+    print(f"\n✅ Training completed: {variant} - {robot_name}")
+
+if __name__ == "__main__":
+    # HDR20-DG5F
+    variants = ["pure_ppo", "bc_ppo", "ppo_contact", "bc_ppo_contact"]
+
+    for variant in variants:
+        train_rl_with_bc(variant, robot_name="hdr20_dg5f", num_epochs=5000)
+```
+
+✅ 체크포인트:
+- BC initialization script 작성 완료
+
+
+--------------------------------------------------------------------------------
+Day 25-35: RL Training 실행 (가장 긴 단계!)
+--------------------------------------------------------------------------------
+
+Step 4.3: 8개 실험 실행
+----------------------
+각 실험은 약 12-24시간 소요 예상 (GPU에 따라 다름)
+
+**병렬 실행 권장:**
+- 2개 GPU가 있다면 동시에 2개 실험 실행
+
+실행 스크립트:
+$ cd /home/dyros/IsaacLab
+
+# Variant 1: Pure PPO (Baseline)
+$ ./isaaclab.sh -p scripts/week4_rl/rl_with_bc_init.py \
+  --variant pure_ppo --robot hdr20_dg5f \
+  > logs/week4_ppo_hdr_pure.log 2>&1 &
+
+# Variant 2: BC + PPO
+$ ./isaaclab.sh -p scripts/week4_rl/rl_with_bc_init.py \
+  --variant bc_ppo --robot hdr20_dg5f \
+  > logs/week4_ppo_hdr_bc.log 2>&1 &
+
+# ... (similarly for other variants)
+
+모니터링:
+$ tail -f logs/week4_ppo_hdr_pure.log
+
+TensorBoard:
+$ tensorboard --logdir results/week4_rl/ --port 6006
+# 브라우저에서: http://localhost:6006
+
+✅ 체크포인트 (각 실험):
+- 5000 epochs 완료
+- Success rate > 70%
+- Checkpoint 저장됨
+
+
+Step 4.4: 실행 우선순위
+-----------------------
+시간이 부족할 경우 다음 순서로 실행:
+
+**Priority 1 (필수):**
+1. bc_ppo_contact (HDR20-DG5F) - FULL METHOD
+2. pure_ppo (HDR20-DG5F) - Baseline
+3. bc_ppo_contact (UH035-Inspire) - FULL METHOD
+
+**Priority 2 (중요):**
+4. pure_ppo (UH035-Inspire) - Baseline
+5. bc_ppo (HDR20-DG5F) - Ablation
+6. ppo_contact (HDR20-DG5F) - Ablation
+
+**Priority 3 (선택):**
+7. bc_ppo (UH035-Inspire)
+8. ppo_contact (UH035-Inspire)
+
+최소한 Priority 1 (3개)은 완료해야 논문 작성 가능!
+
+✅ 결정:
+- Week 4 중간에 진행 상황 체크
+- 시간 부족 시 Priority 1만 완료
+
+
+Step 4.5: Week 4 완료 체크리스트
+-------------------------------
+□ RL-Games config 수정
+□ BC initialization script 작성
+□ 최소 3개 핵심 실험 완료:
+  □ bc_ppo_contact (HDR20)
+  □ pure_ppo (HDR20)
+  □ bc_ppo_contact (UH035)
+□ TensorBoard 로그 확인
+□ Checkpoints 저장됨
+
+✅ Week 4 완료!
+
+
+================================================================================
+📅 WEEK 5: Evaluation & Analysis
+================================================================================
+
+목표: 실험 결과 평가 및 논문 작성을 위한 데이터 생성
+
+--------------------------------------------------------------------------------
+Day 36-38: 평가 메트릭 수집
+--------------------------------------------------------------------------------
+
+Step 5.1: Evaluation script 작성
+--------------------------------
+파일: /home/dyros/IsaacLab/scripts/week5_eval/evaluate_policies.py
+
+```python
+#!/usr/bin/env python3
+"""Policy evaluation script"""
+
+import torch
+import numpy as np
+from pathlib import Path
+import json
+from isaaclab.app import AppLauncher
+app = AppLauncher().app
+
+from isaaclab_tasks.manager_based.manipulation.dexsuite_hdr import DexsuiteEnvCfg
+
+def evaluate_policy(
+    checkpoint_path: str,
+    robot_name: str = "hdr20_dg5f",
+    num_episodes: int = 100,
+    render: bool = False
+):
+    """
+    단일 policy 평가
+
+    Returns:
+        results: dict with metrics
+    """
+    # Load checkpoint
+    checkpoint = torch.load(checkpoint_path)
+
+    # TODO: Policy 로드 (RL-Games format)
+
+    # Create environment
+    env_cfg = DexsuiteEnvCfg()
+    env = env_cfg.create_env(num_envs=100, render=render)
+
+    # Evaluation metrics
+    success_rates = []
+    episode_lengths = []
+    contact_forces = []
+
+    print(f"Evaluating: {checkpoint_path}")
+    print(f"Episodes: {num_episodes}")
+
+    for ep in range(num_episodes):
+        obs = env.reset()
+        done = False
+        step = 0
+        ep_forces = []
+
+        while not done and step < 500:
+            # Get action from policy
+            with torch.no_grad():
+                actions = policy(obs)
+
+            obs, rewards, dones, info = env.step(actions)
+
+            # Collect contact forces
+            if hasattr(env, 'contact_sensor'):
+                forces = env.contact_sensor.data.net_forces_w
+                ep_forces.append(forces.cpu().numpy())
+
+            done = dones.any()
+            step += 1
+
+        # Record metrics
+        success = info.get('success', torch.zeros(100, dtype=bool))
+        success_rates.append(success.float().mean().item())
+        episode_lengths.append(step)
+        contact_forces.extend(ep_forces)
+
+        if (ep + 1) % 10 == 0:
+            print(f"  Episodes {ep+1}/{num_episodes}: Success = {np.mean(success_rates):.2%}")
+
+    # Aggregate results
+    results = {
+        'success_rate': np.mean(success_rates),
+        'success_std': np.std(success_rates),
+        'avg_episode_length': np.mean(episode_lengths),
+        'avg_contact_force': np.mean([f.mean() for f in contact_forces]),
+        'max_contact_force': np.max([f.max() for f in contact_forces])
+    }
+
+    print(f"\n{'='*60}")
+    print(f"Evaluation Results")
+    print(f"{'='*60}")
+    for key, value in results.items():
+        print(f"{key:25s}: {value:.4f}")
+    print(f"{'='*60}\n")
+
+    env.close()
+    return results
+
+def evaluate_all_experiments():
+    """모든 실험 평가"""
+    experiments = [
+        ("hdr20_dg5f", "pure_ppo"),
+        ("hdr20_dg5f", "bc_ppo"),
+        ("hdr20_dg5f", "ppo_contact"),
+        ("hdr20_dg5f", "bc_ppo_contact"),
+        ("uh035_inspire", "pure_ppo"),
+        ("uh035_inspire", "bc_ppo"),
+        ("uh035_inspire", "ppo_contact"),
+        ("uh035_inspire", "bc_ppo_contact"),
+    ]
+
+    all_results = {}
+
+    for robot, variant in experiments:
+        checkpoint_path = f"results/week4_rl/{robot}/{variant}/checkpoint_final.pth"
+
+        if not Path(checkpoint_path).exists():
+            print(f"⚠️ Skipping {robot}/{variant}: checkpoint not found")
+            continue
+
+        results = evaluate_policy(checkpoint_path, robot, num_episodes=100)
+        all_results[f"{robot}_{variant}"] = results
+
+    # Save results
+    output_path = "results/week5_eval/evaluation_results.json"
+    with open(output_path, 'w') as f:
+        json.dump(all_results, f, indent=2)
+
+    print(f"✓ Saved results: {output_path}")
+    return all_results
+
+if __name__ == "__main__":
+    results = evaluate_all_experiments()
+```
+
+실행:
+$ python scripts/week5_eval/evaluate_policies.py
+
+예상 실행 시간: 4-8시간 (8개 실험 × 100 episodes each)
+
+✅ 체크포인트:
+- evaluation_results.json 생성됨
+
+
+--------------------------------------------------------------------------------
+Day 39-40: 결과 시각화
+--------------------------------------------------------------------------------
+
+Step 5.2: 결과 비교 plots 생성
+------------------------------
+파일: /home/dyros/IsaacLab/scripts/week5_eval/plot_results.py
+
+```python
+#!/usr/bin/env python3
+"""결과 시각화"""
+
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def plot_success_rates(results):
+    """Success rate 비교"""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+
+    # HDR20-DG5F
+    hdr_variants = ['pure_ppo', 'bc_ppo', 'ppo_contact', 'bc_ppo_contact']
+    hdr_success = [results[f'hdr20_dg5f_{v}']['success_rate'] for v in hdr_variants]
+    hdr_std = [results[f'hdr20_dg5f_{v}']['success_std'] for v in hdr_variants]
+
+    ax1.bar(hdr_variants, hdr_success, yerr=hdr_std, capsize=5)
+    ax1.set_title('HDR20-DG5F (26-DOF)')
+    ax1.set_ylabel('Success Rate')
+    ax1.set_ylim([0, 1.0])
+    ax1.grid(axis='y', alpha=0.3)
+
+    # UH035-Inspire
+    uh035_variants = ['pure_ppo', 'bc_ppo', 'ppo_contact', 'bc_ppo_contact']
+    uh035_success = [results[f'uh035_inspire_{v}']['success_rate'] for v in uh035_variants]
+    uh035_std = [results[f'uh035_inspire_{v}']['success_std'] for v in uh035_variants]
+
+    ax2.bar(uh035_variants, uh035_success, yerr=uh035_std, capsize=5)
+    ax2.set_title('UH035-Inspire (12-DOF)')
+    ax2.set_ylabel('Success Rate')
+    ax2.set_ylim([0, 1.0])
+    ax2.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('results/week5_eval/success_rate_comparison.png', dpi=300)
+    print("✓ Saved: success_rate_comparison.png")
+
+def plot_sample_efficiency():
+    """Learning curves from TensorBoard logs"""
+    # TODO: Parse TensorBoard logs
+    # Plot training curves showing sample efficiency
+    pass
+
+def plot_contact_forces(results):
+    """Contact force 비교"""
+    variants = ['pure_ppo', 'bc_ppo', 'ppo_contact', 'bc_ppo_contact']
+
+    hdr_forces = [results[f'hdr20_dg5f_{v}']['avg_contact_force'] for v in variants]
+    uh035_forces = [results[f'uh035_inspire_{v}']['avg_contact_force'] for v in variants]
+
+    x = np.arange(len(variants))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(x - width/2, hdr_forces, width, label='HDR20-DG5F')
+    ax.bar(x + width/2, uh035_forces, width, label='UH035-Inspire')
+
+    ax.set_xlabel('Variant')
+    ax.set_ylabel('Average Contact Force (N)')
+    ax.set_title('Contact Force Comparison')
+    ax.set_xticks(x)
+    ax.set_xticklabels(variants)
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig('results/week5_eval/contact_force_comparison.png', dpi=300)
+    print("✓ Saved: contact_force_comparison.png")
+
+def generate_latex_table(results):
+    """LaTeX table for paper"""
+    table = r"""
+\begin{table}[t]
+\centering
+\caption{Evaluation Results}
+\label{tab:results}
+\begin{tabular}{lcccc}
+\toprule
+Method & \multicolumn{2}{c}{HDR20-DG5F} & \multicolumn{2}{c}{UH035-Inspire} \\
+       & Success (\%) & Steps & Success (\%) & Steps \\
+\midrule
+"""
+
+    variants = [
+        ('Pure PPO', 'pure_ppo'),
+        ('BC + PPO', 'bc_ppo'),
+        ('PPO + Contact', 'ppo_contact'),
+        ('BC + PPO + Contact', 'bc_ppo_contact')
+    ]
+
+    for name, key in variants:
+        hdr_success = results[f'hdr20_dg5f_{key}']['success_rate'] * 100
+        hdr_steps = results[f'hdr20_dg5f_{key}']['avg_episode_length']
+        uh035_success = results[f'uh035_inspire_{key}']['success_rate'] * 100
+        uh035_steps = results[f'uh035_inspire_{key}']['avg_episode_length']
+
+        table += f"{name:20s} & {hdr_success:5.1f} & {hdr_steps:5.0f} & {uh035_success:5.1f} & {uh035_steps:5.0f} \\\\\n"
+
+    table += r"""\bottomrule
+\end{tabular}
+\end{table}
+"""
+
+    with open('results/week5_eval/results_table.tex', 'w') as f:
+        f.write(table)
+
+    print("✓ Saved: results_table.tex")
+
+if __name__ == "__main__":
+    # Load results
+    with open('results/week5_eval/evaluation_results.json', 'r') as f:
+        results = json.load(f)
+
+    # Generate plots
+    plot_success_rates(results)
+    plot_contact_forces(results)
+    plot_sample_efficiency()
+
+    # Generate LaTeX table
+    generate_latex_table(results)
+
+    print("\n✅ All visualizations generated!")
+```
+
+실행:
+$ python scripts/week5_eval/plot_results.py
+
+✅ 체크포인트:
+- success_rate_comparison.png
+- contact_force_comparison.png
+- results_table.tex
+
+
+--------------------------------------------------------------------------------
+Day 41-42: 최종 보고서 작성
+--------------------------------------------------------------------------------
+
+Step 5.3: 최종 보고서 작성
+-------------------------
+파일: /home/dyros/IsaacLab/FINAL_REPORT.md
+
+구조:
+1. Introduction
+2. Method
+3. Experimental Setup
+4. Results
+5. Discussion
+6. Conclusion
+
+보고서에 포함할 figures:
+- Demo statistics (Week 1)
+- Reward breakdown (Week 2)
+- BC training curves (Week 3)
+- RL learning curves (Week 4)
+- Success rate comparison (Week 5)
+- Contact force comparison (Week 5)
+
+✅ 체크포인트:
+- 4-6 페이지 보고서 완성
+
+
+Step 5.4: 비디오 데모 생성 (선택)
+---------------------------------
+파일: /home/dyros/IsaacLab/scripts/week5_eval/record_videos.py
+
+```python
+#!/usr/bin/env python3
+"""성공적인 grasps 비디오 기록"""
+
+# TODO: Isaac Lab video recorder 사용
+# Best policy로 성공 사례 10개 녹화
+```
+
+✅ 체크포인트:
+- 10개 성공 사례 비디오
+
+
+Step 5.5: Week 5 완료 체크리스트
+-------------------------------
+□ 모든 policies 평가 완료
+□ evaluation_results.json 생성
+□ Success rate plots 생성
+□ Contact force plots 생성
+□ LaTeX table 생성
+□ 최종 보고서 작성
+□ (선택) 비디오 데모
+
+✅ Week 5 완료!
+✅ 프로젝트 완료!
+
+
+================================================================================
+📊 최종 체크리스트
+================================================================================
+
+Week 1: Demonstrations
+□ 800+ demos per robot
+□ Isaac Lab format 변환
+□ Validation 통과
+
+Week 2: Contact-Aware Rewards
+□ Contact gating 구현
+□ Grasp duration 구현
+□ Ground penalty 구현
+□ Reward 검증
+
+Week 3: BC Pre-training
+□ BC model 구현
+□ Dataset loader 구현
+□ Training 완료 (2 robots)
+□ >30% success rate
+
+Week 4: RL Training
+□ 최소 3개 핵심 실험 완료
+□ TensorBoard 로그 확인
+□ Checkpoints 저장
+
+Week 5: Evaluation
+□ 평가 완료
+□ Plots 생성
+□ 보고서 작성
+
+================================================================================
+⚠️ 주요 리스크 & 완화 전략
+================================================================================
+
+Risk 1: Week 1 - MoveIt2 통합 실패
+→ Fallback: Isaac Sim RMPflow 또는 synthetic trajectories
+
+Risk 2: Week 3 - BC success rate 너무 낮음 (<20%)
+→ Action: More demos, longer training, 또는 BC 없이 RL 진행
+
+Risk 3: Week 4 - 시간 부족
+→ Priority 1 (3개 핵심 실험)만 완료
+
+Risk 4: 전체 - GPU 메모리 부족
+→ num_envs 줄이기 (4096 → 2048 → 1024)
+
+================================================================================
+💡 유용한 명령어
+================================================================================
+
+# Isaac Lab 활성화
+$ cd /home/dyros/IsaacLab
+$ source activate_isaac_lab.sh
+
+# GPU 확인
+$ nvidia-smi
+
+# Process 모니터링
+$ watch -n 1 nvidia-smi
+$ htop
+
+# TensorBoard
+$ tensorboard --logdir results/week4_rl/ --port 6006
+
+# Logs 확인
+$ tail -f logs/week4_*.log
+
+# Disk 용량 확인
+$ df -h
+$ du -sh results/
+
+================================================================================
+📞 도움이 필요할 때
+================================================================================
+
+1. Isaac Lab 공식 문서:
+   https://isaac-sim.github.io/IsaacLab/
+
+2. MoveIt2 + Isaac Sim 튜토리얼:
+   https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+
+3. RL-Games 문서:
+   https://github.com/Denys88/rl_games
+
+4. 이 가이드의 스크립트들:
+   /home/dyros/IsaacLab/scripts/
+
+================================================================================
+✅ 프로젝트 성공 기준
+================================================================================
+
+최소 요구사항 (졸업 가능):
+✓ Priority 1 실험 3개 완료
+✓ BC + PPO + Contact가 Pure PPO보다 높은 success rate
+✓ 4페이지 이상 보고서
+
+우수 평가 기준:
+✓ 모든 8개 실험 완료
+✓ 2-4× faster convergence 증명
+✓ Ablation study 완료
+✓ 6페이지 보고서 + 비디오
+
+================================================================================
+🚀 시작하기
+================================================================================
+
+지금 바로 시작하세요:
+
+$ cd /home/dyros/IsaacLab
+$ source activate_isaac_lab.sh
+
+# Week 0: 환경 확인
+$ python source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/dexsuite_hdr/dexsuite_hdr.py --task Isaac-Lift-HDR-DG5F-v0 --num_envs 4 --headless
+
+# 작동하면 Week 1 시작!
+$ ls scripts/week1_isaac_sim/
+
+행운을 빕니다! 🎉
+
+================================================================================
+END OF IMPLEMENTATION GUIDE
+================================================================================

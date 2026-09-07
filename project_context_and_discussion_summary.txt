@@ -1,0 +1,535 @@
+================================================================================
+프로젝트 컨텍스트 및 논의 요약
+최종 업데이트: 2025-01-12
+================================================================================
+
+[중요] 이 파일은 Claude Code 재로그인 시 이전 대화 맥락을 복원하기 위한 것입니다.
+
+================================================================================
+1. 프로젝트 배경 및 현황
+================================================================================
+
+1.1 최종 선택된 로봇 플랫폼 (Proposal 확정 후)
+-------------------------------------------
+**변경사항: 산업용 로봇 → UR10e 기반 시스템**
+
+이유:
+- UR10e는 Isaac Sim과 MoveIt2에서 공식 지원이 잘 되어 있음
+- USD file 준비 및 환경 구축이 더 용이함
+- 실제 로봇 실험은 시간/자원 제약으로 제외 (시뮬레이션만 진행)
+
+**최종 로봇 구성:**
+
+**Robot 1: UR10e-DG5F**
+- 베이스: UR10e (6-DOF 협동 로봇 팔)
+- 그리퍼: DG5F (20-DOF, fully-actuated 5지 그리퍼)
+- 총 자유도: 26-DOF
+- 로봇 정의 파일: /home/dyros/IsaacLab/source/isaaclab_assets/isaaclab_assets/robots/ur10e_dg5f.py (예정)
+- 특징: 완전 구동, 정밀 제어 가능
+
+**Robot 2: UR10e-Inspire**
+- 베이스: UR10e (6-DOF 협동 로봇 팔)
+- 그리퍼: Inspire (6 actuated DOF, under-actuated 5지)
+- 총 자유도: 12 actuated DOF + mimic joints
+- 로봇 정의 파일: /home/dyros/IsaacLab/source/isaaclab_assets/isaaclab_assets/robots/ur10e_inspire.py (예정)
+- 특징: Under-actuated, compliance 기반
+
+**공통 설정:**
+- RL Algorithm: RL-Games PPO
+- Simulator: Isaac Lab (GPU-accelerated, 4096 parallel envs)
+- Task: Object lifting (다양한 형태의 물체)
+- Demo Generation: MoveIt2 + Isaac Sim
+- Pre-training: Behavior Cloning (BC)
+- Fine-tuning: PPO with contact-aware rewards
+
+1.2 기존 환경 (참고용, HDR/UH035 기반)
+-------------------------------------
+위치: /home/dyros/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/manipulation/
+
+**기존 Environment 1: dexsuite_hdr (HDR20-DG5F)**
+- 로봇: HDR20-17 (6-DOF 산업용 팔) + DG5F (20-DOF)
+- 총 자유도: 26-DOF
+- 로봇 정의: source/isaaclab_assets/isaaclab_assets/robots/hdr20_dg5f.py
+- Config: source/isaaclab_tasks/.../dexsuite_hdr/config/hdr_dg5f_new/
+- 이미 구현된 contact-aware reward 있음 (참고 가능)
+
+**기존 Environment 2: dexsuite_uh035 (UH035-Inspire)**
+- 로봇: UH035 (6-DOF, 35kg payload) + Inspire (6 actuated DOF)
+- 총 자유도: 12 actuated DOF
+- 로봇 정의: source/isaaclab_assets/isaaclab_assets/robots/uh035_inspire_left.py
+- Config: source/isaaclab_tasks/.../dexsuite_uh035/config/uh035_inspire/
+
+**재사용 가능한 코드:**
+- Contact sensor 설정
+- Reward functions (ground_contact_penalty, grasp_duration, good_finger_contact)
+- RL-Games PPO config
+- Object spawn logic
+
+================================================================================
+2. 최종 프로젝트: Motion Planning-Bootstrapped RL
+================================================================================
+
+2.1 제목 및 핵심 아이디어
+-----------------------
+**Title:**
+"Motion Planning-Bootstrapped Reinforcement Learning with Contact-Aware
+Reward Shaping for High-DOF Dexterous Manipulation"
+
+**핵심 아이디어:**
+1. MoveIt2 motion planner로 자동 demonstration 생성 (1000 demos per robot)
+2. Behavior Cloning으로 policy 초기화 (50 epochs)
+3. Contact-aware rewards와 함께 PPO fine-tuning (5000 epochs)
+4. High-DOF dexterous hands (26-DOF, 12-DOF)에 적용
+
+**Three-Phase Framework:**
+
+Phase 1: Automated Demonstration Generation (Isaac Sim + MoveIt2)
+- MoveIt2로 collision-free trajectories 계획
+- Isaac Sim에서 실행하여 (state, action) pairs 기록
+- 로봇당 1000 demonstrations 생성
+- Isaac Lab format으로 변환
+
+Phase 2: Behavior Cloning Pre-training
+- 3-layer FC network (256-256-128 units)
+- 50 epochs, MSE loss
+- 목표: >30% success rate
+
+Phase 3: RL Fine-tuning + Contact-Aware Rewards
+- BC policy로 초기화
+- PPO training with contact-specific rewards (5000 epochs)
+- Demonstration buffer 유지: 25% demo + 75% RL data
+
+2.2 핵심 기여: Contact-Aware Reward Shaping
+---------------------------------------
+세 가지 contact-specific rewards:
+
+(1) **Contact Gating**: Position tracking reward를 finger-object contact 시에만 활성화
+    → 팔로만 밀지 않고 손가락으로 잡도록 강제
+
+(2) **Grasp Duration**: 다중 손가락의 지속적 접촉 장려 (최소 10 steps)
+    → 순간적 터치가 아닌 안정적 파지 유도
+
+(3) **Ground Penalty**: Object-floor collision에 벌점
+    → 바닥 튕김 악용 방지
+
+**Key Insight:**
+Motion planning은 kinematic feasibility를 제공하고,
+Contact rewards는 dynamic stability를 제공하여,
+상호 보완적으로 robust grasping 가능하게 함.
+
+2.3 실험 설계
+-----------
+**Ablation Study (4 variants):**
+1. Pure PPO (baseline)
+2. BC + PPO
+3. PPO + Contact
+4. BC + PPO + Contact (full method)
+
+**실험 구성:**
+- 4 variants × 2 robots = 8 experiments
+- 각 실험당 5000 epochs
+- GPU parallelization (4096 envs)
+
+**평가 지표:**
+- Success rate
+- Sample efficiency (samples needed to reach 80% success)
+- Contact force statistics
+- Grasp quality
+
+**예상 결과:**
+- Full method: 2-4× faster convergence vs pure PPO
+- 80%+ success rate
+- 50-75% training time reduction
+
+================================================================================
+3. 기존 연구 분석 및 우리의 차별점
+================================================================================
+
+3.1 주요 관련 논문 (검증 완료)
+----------------------------
+
+**[핵심] Abbatematteo et al. 2021 - Bootstrapping Motor Skill Learning**
+- Publication: IROS 2021, arXiv:2101.04736
+- Link: http://irl.cs.brown.edu/pubs/bootstrapping_skills.pdf
+- 핵심:
+  * Kinematic motion planning으로 demonstration 자동 생성
+  * Behavior cloning + Policy gradient
+  * Tasks: Drawer, microwave, t-ball
+  * Robot: 7-DOF arm만 (simple gripper 또는 gripper 없음)
+- 한계:
+  ❌ Dexterous hand 없음 (6-7 DOF arm만)
+  ❌ Contact dynamics 무시
+  ❌ Simple manipulation tasks
+
+**[최신] PLANRL 2024 - Motion Planning and Imitation Learning**
+- Publication: arXiv:2408.04054, 2024
+- Link: https://arxiv.org/abs/2408.04054
+- Authors: Amisha Bhaskar, Zahiruddin Mahammad, Sachin Jadhav, Pratap Tokekar
+- 핵심:
+  * Mode switching: Classical planning (waypoint) + RL (manipulation)
+  * 3-network architecture: ModeNet, NavNet, InteractNet
+  * Real robot: UR3e + Robotiq Hand-e gripper (parallel-jaw)
+  * 90% success on simple tasks, unique success on two-stage tasks
+  * Demonstration: Manual teleoperation (modified Gello, 10-20 demos)
+- 한계:
+  ❌ Simple parallel-jaw gripper만 (~8 DOF total)
+  ❌ 수동 teleoperation 필요 (자동화 안 됨)
+  ❌ Contact-aware rewards 없음
+  ❌ High-DOF dexterous hand 없음
+
+**[참고] DexPBT 2023**
+- Publication: RSS 2023
+- Link: https://arxiv.org/abs/2305.12127
+- 핵심:
+  * Kuka (7-DOF) + Allegro (16-DOF) = 23-DOF
+  * Population-based training
+  * Isaac Gym GPU parallelization
+- 차이점:
+  * Demonstration 사용 안 함 (pure RL)
+  * Motion planning bootstrap 없음
+
+3.2 우리 연구의 차별점 (Novelty)
+------------------------------
+**기존 연구의 공통 한계:**
+- Abbatematteo 2021: 6-7 DOF arm만, contact 무시
+- PLANRL 2024: Simple gripper, 수동 teleoperation, contact 무시
+- DexPBT 2023: Pure RL (샘플 비효율), demonstration 없음
+
+**우리의 3가지 핵심 기여:**
+
+✅ **(1) Scaling to High-DOF Systems**
+   - 기존 7-DOF → 우리 26-DOF dexterous hand
+   - 3-4× larger action space
+   - Motion planning bootstrap가 high-DOF에서도 효과적임을 검증
+
+✅ **(2) Kinematic-Dynamic Complementarity**
+   - 기존: Kinematic planning만 (contact dynamics 무시)
+   - 우리: Motion planning (kinematic) + Contact rewards (dynamic)
+   - 상호 보완적 접근으로 robust grasping 달성
+
+✅ **(3) Automated Demonstration Pipeline**
+   - PLANRL: Manual teleoperation (Gello 하드웨어, 10-20 demos)
+   - 우리: Fully automated (MoveIt2, 1000 demos)
+   - 인간 개입 없이 대규모 시연 생성 (\$0 hardware cost)
+
+**Academic Positioning:**
+"This research extends motion planning-bootstrapped RL [Abbatematteo 2021]
+from 7-DOF robotic arms to 26-DOF dexterous hands, validating sample
+efficiency gains in high dimensions and introducing contact-aware reward
+shaping to address the kinematic-dynamic gap that motion planning alone
+cannot capture."
+
+3.3 PLANRL과의 상세 비교
+-----------------------
+| 측면 | PLANRL (2024) | 우리 연구 |
+|------|---------------|-----------|
+| **로봇** | UR3e + Robotiq Hand-e (parallel-jaw) | UR10e + DG5F/Inspire (dexterous) |
+| **자유도** | ~8 DOF | 26 DOF / 12 DOF |
+| **시연 생성** | 수동 teleoperation (Gello) | 자동 (MoveIt2) |
+| **시연 수** | 10-20 demos | 1000 demos |
+| **접촉 보상** | 없음 (규칙 기반만) | Contact gating/duration/penalty |
+| **아키텍처** | 3-network (Mode/Nav/Interact) | Single policy + contact rewards |
+| **기여** | Mode switching | High-DOF + Automated + Contact |
+
+================================================================================
+4. 검증된 주요 논문 목록 (최종 Proposal References)
+================================================================================
+
+4.1 최종 제안서 인용 논문 (7개)
+------------------------------
+[1] Rajeswaran et al., "Learning Complex Dexterous Manipulation with Deep
+    Reinforcement Learning and Demonstrations," RSS 2018.
+
+[2] Andrychowicz et al., "Learning dexterous in-hand manipulation,"
+    IJRR, vol. 39, no. 1, pp. 3-20, 2020.
+
+[3] Abbatematteo et al., "Bootstrapping Motor Skill Learning with Motion
+    Planning," IROS 2021. arXiv:2101.04736.
+
+[4] Bhaskar et al., "PLANRL: A Motion Planning and Imitation Learning
+    Framework to Bootstrap Reinforcement Learning," arXiv:2408.04054, 2024.
+
+[5] Lian et al., "Reinforcement Learning in Robotic Motion Planning by
+    Combined Experience-based Planning and Self-Imitation Learning,"
+    Robotics and Autonomous Systems, vol. 169, 104904, 2023.
+    (주의: 저자명 확인 필요 - Lian vs Luo)
+
+[6] Petrenko et al., "DexPBT: Scaling up Dexterous Manipulation for
+    Hand-Arm Systems with Population Based Training," RSS 2023.
+
+[7] Hester et al., "Deep Q-learning from Demonstrations," AAAI 2018.
+
+4.2 추가 참고 논문 (구현 시 참고)
+-------------------------------
+- MoPA-RL (CoRL 2020): Motion planner augmented RL
+- IndustReal (RSS 2023): Contact-rich assembly, sim-to-real
+- SDM Hand (IJRR 2010): Under-actuated hand theory
+- Reward Shaping (ICML 1999): Ng et al., foundational theory
+
+================================================================================
+5. 예상 기여 (Expected Contribution)
+================================================================================
+
+5.1 Theoretical/Algorithmic Contributions
+-----------------------------------------
+1. **Scaling to High-DOF Systems**: 7-DOF → 26-DOF 확장 검증
+2. **Kinematic-Dynamic Complementarity**: Planning + Contact rewards 결합
+3. **Automated Demonstration Pipeline**: 완전 자동화 시연 생성
+4. **Contact-Aware Reward Framework**: 체계적 reward shaping
+
+5.2 Practical Contributions
+---------------------------
+1. **Sample Efficiency**: Pure PPO 100M samples (24h) → Proposed method 25-50M (6-12h)
+   - 2-4× speedup
+   - 50-75% time reduction
+
+2. **Cost Reduction**:
+   - Human demos: \$10,000+ hardware, under 100 hours
+   - Pure RL: 100 years simulation, \$5,000+ electricity
+   - Proposed method: \$0 hardware, under 10 hours total
+
+3. **Open-Source Toolkit**:
+   - Demonstration toolkit
+   - Contact-aware reward library
+   - Implementation guide for Isaac Lab
+
+5.3 장기적 영향
+--------------
+**과학적 영향:**
+- High-DOF robot learning의 샘플 효율성 향상 방법론
+- Motion planning과 RL 통합의 이론적 이해 증진
+- Contact manipulation의 reward shaping 가이드라인
+
+**기술적/경제적 영향:**
+- Dexterous manipulation RL의 실용성 향상
+- 로봇 RL 적용 범위 확대
+- 중소기업의 RL 기술 접근성 향상
+
+================================================================================
+6. 구현 계획 (Timeline)
+================================================================================
+
+6.1 5주 계획
+-----------
+**Week 0 (준비):**
+- UR10e-DG5F, UR10e-Inspire USD files 준비
+- Isaac Sim 환경 설정
+- MoveIt2 integration 테스트
+
+**Week 1: Demonstration Generation**
+- MoveIt2로 collision-free trajectories 계획
+- Isaac Sim에서 실행 및 기록
+- 로봇당 1000 demonstrations 생성
+- Isaac Lab format 변환
+
+**Week 2: Contact-Aware Reward Implementation**
+- Contact gating 구현
+- Grasp duration 구현
+- Ground penalty 검증
+- Single env validation
+
+**Week 3: Behavior Cloning Pre-training**
+- BC training loop 구현
+- 3-layer FC network (256-256-128)
+- 50 epochs 훈련
+- >30% success rate 달성
+
+**Week 4: RL Training**
+- RL-Games PPO + demonstration buffer
+- 4 variants 훈련:
+  1. Pure PPO
+  2. BC + PPO
+  3. PPO + Contact
+  4. BC + PPO + Contact (full)
+- 2 robots × 4 variants = 8 experiments
+- 5000 epochs per variant
+
+**Week 5: Evaluation & Analysis**
+- Success rate, sample efficiency 분석
+- Contact force statistics
+- Ablation study 결과 정리
+- Robot comparison (DG5F vs Inspire)
+- Final report 작성
+
+6.2 핵심 구현 포인트
+------------------
+**Phase 1: Isaac Sim (Offline)**
+- MoveIt2 trajectory planning
+- Collision checking
+- Export: (state, action, reward, next_state)
+
+**Phase 2: Isaac Lab (Online)**
+- Import demonstrations
+- BC pre-training (supervised)
+- RL fine-tuning with demo buffer (25% demo + 75% RL)
+
+**Demo Buffer Strategy:**
+- DQfD-style prioritized replay
+- Maintain demonstration data throughout training
+- Sample ratio: 25% demo, 75% on-policy RL
+
+================================================================================
+7. 기술적 참고사항
+================================================================================
+
+7.1 MoveIt2 + Isaac Sim Integration
+-----------------------------------
+공식 문서:
+https://developer.nvidia.com/blog/create-realistic-robotics-simulations-with-ros-2-moveit-and-nvidia-isaac-sim/
+
+핵심 단계:
+1. Isaac Sim + ROS 2 bridge 설정
+2. MoveIt2 config for UR10e-DG5F/Inspire
+3. RRT-Connect planner 사용
+4. Trajectory execution & validation
+
+Fallback: Isaac Sim의 내장 RMPflow planner
+
+7.2 Isaac Lab Demonstration Format
+----------------------------------
+필요한 데이터 구조:
+```python
+demo = {
+    'observations': {
+        'policy': [...],      # object pose, target pose, actions
+        'proprio': [...],     # joint pos/vel, fingertip states, contact
+        'perception': [...]   # point cloud (optional)
+    },
+    'actions': [...],         # joint position commands
+    'rewards': [...],         # reward signal
+    'dones': [...]           # episode termination
+}
+```
+
+7.3 Contact Sensor 설정
+----------------------
+UR10e-DG5F 기준 (DG5F fingertips):
+- Fingertip bodies: rl_dg_1_4, rl_dg_2_4, rl_dg_3_4, rl_dg_4_4, rl_dg_5_4
+- Contact sensors: ContactSensorCfg
+
+UR10e-Inspire 기준 (Inspire fingertips):
+- Fingertip bodies: left_thumb_4, left_index_2, left_middle_2, left_ring_2, left_pinky_2
+- Contact sensors: ContactSensorCfg
+
+기존 HDR/UH035 환경의 코드 재사용 가능.
+
+7.4 RL-Games PPO 수정
+--------------------
+파일: agents/rl_games_ppo_cfg.yaml
+
+추가 필요:
+1. Demonstration buffer support
+2. Prioritized replay (demo vs RL data)
+3. BC auxiliary loss term
+4. Demo sampling ratio hyperparameter
+
+================================================================================
+8. 중요 파일 위치
+================================================================================
+
+**최종 Proposal 문서:**
+- LaTeX: /home/dyros/IsaacLab/proposal_submit.txt (또는 new_short_latex_final.txt)
+- English: /home/dyros/IsaacLab/final_project_proposal_english_hybrid_2page.txt
+- Korean: /home/dyros/IsaacLab/final_project_proposal_korean_hybrid_2page.txt
+
+**기존 환경 (참고용):**
+- HDR Config: source/isaaclab_tasks/.../dexsuite_hdr/config/hdr_dg5f_new/
+- UH035 Config: source/isaaclab_tasks/.../dexsuite_uh035/config/uh035_inspire/
+- Base Config: source/isaaclab_tasks/.../dexsuite_env_cfg.py
+- Reward 함수: source/isaaclab_tasks/.../dexsuite_hdr/mdp/rewards.py
+
+**로봇 정의 (기존, 참고용):**
+- HDR20-DG5F: source/isaaclab_assets/isaaclab_assets/robots/hdr20_dg5f.py
+- UH035-Inspire: source/isaaclab_assets/isaaclab_assets/robots/uh035_inspire_left.py
+- UR10e (기존): source/isaaclab_assets/isaaclab_assets/robots/universal_robots.py
+
+**새로 만들 파일 (예정):**
+- UR10e-DG5F: source/isaaclab_assets/isaaclab_assets/robots/ur10e_dg5f.py
+- UR10e-Inspire: source/isaaclab_assets/isaaclab_assets/robots/ur10e_inspire.py
+
+**구현 가이드:**
+- /home/dyros/IsaacLab/IMPLEMENTATION_GUIDE_DETAILED.txt
+
+================================================================================
+9. 주요 결정사항 요약
+================================================================================
+
+✅ 최종 로봇: UR10e-DG5F (26-DOF), UR10e-Inspire (12-DOF)
+✅ 변경 이유: Isaac Sim/MoveIt2 지원 용이, USD file 준비 쉬움
+✅ 실험 범위: 시뮬레이션만 (실제 로봇 실험 제외)
+✅ 핵심 방법: Motion Planning Bootstrap + Contact-Aware Rewards
+✅ Timeline: 5주 (실현 가능)
+✅ 차별점: High-DOF + Automated Demo + Contact Dynamics
+✅ 예상 성능: 2-4× faster convergence, 80%+ success
+✅ Academic positioning: Extending [Abbatematteo 2021] to high-DOF with contact rewards
+
+**vs PLANRL 2024 차별점:**
+- PLANRL: 8-DOF simple gripper, manual teleoperation, 10-20 demos
+- Ours: 26-DOF dexterous hand, automated planning, 1000 demos, contact rewards
+
+================================================================================
+10. 다음 단계 (구현 시작 시)
+================================================================================
+
+**Phase 0: 환경 구축**
+1. UR10e-DG5F USD file 준비 (또는 URDF → USD 변환)
+2. UR10e-Inspire USD file 준비
+3. Isaac Sim에서 로봇 로딩 테스트
+4. Isaac Lab 환경 생성 (기존 dexsuite 코드 기반)
+
+**Phase 1: Demo Generation**
+1. MoveIt2 integration 테스트
+2. Simple trajectory 1-2개 생성
+3. Isaac Lab으로 import 검증
+4. 대규모 생성 (1000 demos)
+
+**Phase 2: BC + Contact Rewards**
+1. BC pre-training 최소 구현
+2. Contact-aware rewards 구현
+3. Single env 검증
+
+**Phase 3: Full Experiments**
+1. 4 variants 훈련
+2. 평가 및 분석
+
+================================================================================
+11. 이전 제안 아이디어들 (보류/통합)
+================================================================================
+
+- Proposal #1: Contact-Aware Reward Shaping만
+  → Proposal #4에 통합됨
+
+- Proposal #2: Curriculum Learning
+  → 시간 부족으로 보류 (future work)
+
+- Proposal #3: Force-Constrained Manipulation
+  → 기여도 낮아 보류
+
+- 산업용 로봇 강조 (HDR20, UH035)
+  → UR10e 기반으로 변경 (Isaac Sim/MoveIt2 지원 용이)
+
+- Sim-to-Real 실험
+  → 실제 로봇 실험은 시간/자원 제약으로 제외
+
+================================================================================
+END OF CONTEXT
+================================================================================
+
+[재로그인 시 읽어야 할 파일들]
+1. 이 파일 (project_context_and_discussion_summary.txt)
+2. proposal_submit.txt (최종 LaTeX 제안서)
+3. final_project_proposal_english_hybrid_2page.txt
+4. final_project_proposal_korean_hybrid_2page.txt
+5. IMPLEMENTATION_GUIDE_DETAILED.txt (5주 구현 가이드)
+
+[재로그인 시 확인할 사항]
+- UR10e-DG5F, UR10e-Inspire USD/URDF 파일 존재 여부
+- Isaac Sim 환경 상태
+- MoveIt2 설정 상태
+- 기존 HDR/UH035 환경 코드 (재사용 가능)
+
+[재로그인 시 질문 예시]
+- "UR10e-DG5F 환경 만들기 시작하자"
+- "MoveIt2 demonstration 생성 구현 시작"
+- "Contact-aware reward 구현 시작"
+- "Proposal 관련 질문"
