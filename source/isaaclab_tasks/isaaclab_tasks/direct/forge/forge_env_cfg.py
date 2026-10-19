@@ -68,7 +68,7 @@ class EventCfg:
             "static_friction_range": (0.25, 1.25),  # TODO: Set these values based on asset type.
             "dynamic_friction_range": (0.25, 0.25),
             "restitution_range": (0.0, 0.0),
-            "num_buckets": 128,
+            "nuㄴm_buckets": 128,
         },
     )
 
